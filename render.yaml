@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: liniya-rosta-store
+    runtime: node
+    plan: starter
+    region: frankfurt
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    disk:
+      name: liniya-rosta-storage
+      mountPath: /opt/render/project/src/storage
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /opt/render/project/src/storage/data
+      - key: UPLOAD_DIR
+        value: /opt/render/project/src/storage/uploads
+      - key: ENABLE_TELEGRAM_BOT
+        value: "true"
+      - key: TELEGRAM_BOT_MODE
+        value: webhook
+      - key: TELEGRAM_ADMIN_IDS
+        value: "8906052538"
+      - key: TELEGRAM_WEBHOOK_SECRET
+        generateValue: true
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: COMPANY_WHATSAPP
+        value: "996990883883"
+      - key: COMPANY_PHONE_PRIMARY
+        value: "+996 990 883 883"
+      - key: COMPANY_PHONE_SECONDARY
+        value: "+996 552 088 988"
+      - key: COMPANY_ADDRESS
+        value: "Бишкек, ул. Куренкеева, 49"

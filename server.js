@@ -4,14 +4,17 @@ const path = require("path");
 const { URL } = require("url");
 
 const ROOT = __dirname;
-const PUBLIC_DIR = path.join(ROOT, "public");
-const DATA_DIR = path.join(ROOT, "data");
-const UPLOAD_DIR = path.join(PUBLIC_DIR, "uploads");
-
 loadEnv(path.join(ROOT, ".env"));
 
+const PUBLIC_DIR = path.join(ROOT, "public");
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, "data");
+const UPLOAD_DIR = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : path.join(PUBLIC_DIR, "uploads");
+const SEEDED_PRODUCTS_FILE = path.join(ROOT, "data", "products.json");
+
 const PORT = Number(process.env.PORT || 4177);
-const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
+const RENDER_BASE_URL =
+  process.env.RENDER_EXTERNAL_URL || (process.env.RENDER_EXTERNAL_HOSTNAME ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME}` : "");
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || RENDER_BASE_URL || `http://localhost:${PORT}`;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const TELEGRAM_ADMINS = new Set(
   String(process.env.TELEGRAM_ADMIN_IDS || "")
@@ -125,7 +128,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/health") {
       return json(res, 200, {
         ok: true,
-        telegram: Boolean(TELEGRAM_BOT_TOKEN && TELEGRAM_ADMINS.size),
+        telegram: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMINS.size),
+        telegramEnabled: ENABLE_TELEGRAM_BOT,
         telegramMode: TELEGRAM_BOT_MODE
       });
     }
@@ -167,7 +171,13 @@ function loadEnv(file) {
 function ensureStorage() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-  if (!fs.existsSync(PRODUCTS_FILE)) fs.writeFileSync(PRODUCTS_FILE, "[]\n");
+  if (!fs.existsSync(PRODUCTS_FILE)) {
+    if (PRODUCTS_FILE !== SEEDED_PRODUCTS_FILE && fs.existsSync(SEEDED_PRODUCTS_FILE)) {
+      fs.copyFileSync(SEEDED_PRODUCTS_FILE, PRODUCTS_FILE);
+    } else {
+      fs.writeFileSync(PRODUCTS_FILE, "[]\n");
+    }
+  }
   if (!fs.existsSync(ORDERS_FILE)) fs.writeFileSync(ORDERS_FILE, "[]\n");
 }
 
@@ -349,9 +359,15 @@ function makeOrderId(orders = []) {
 }
 
 function serveStatic(req, res, pathname) {
+  if (pathname.startsWith("/uploads/")) {
+    const uploadPath = path.normalize(path.join(UPLOAD_DIR, decodeURIComponent(pathname.slice("/uploads/".length))));
+    if (!isInsideDirectory(UPLOAD_DIR, uploadPath)) return text(res, 403, "Forbidden");
+    if (fs.existsSync(uploadPath) && fs.statSync(uploadPath).isFile()) return streamFile(res, uploadPath);
+  }
+
   const safePath = pathname === "/" ? "/index.html" : decodeURIComponent(pathname);
   const filePath = path.normalize(path.join(PUBLIC_DIR, safePath));
-  if (!filePath.startsWith(PUBLIC_DIR)) return text(res, 403, "Forbidden");
+  if (!isInsideDirectory(PUBLIC_DIR, filePath)) return text(res, 403, "Forbidden");
 
   fs.stat(filePath, (error, stat) => {
     if (error || !stat.isFile()) {
@@ -360,6 +376,11 @@ function serveStatic(req, res, pathname) {
     }
     return streamFile(res, filePath);
   });
+}
+
+function isInsideDirectory(baseDir, targetPath) {
+  const relative = path.relative(baseDir, targetPath);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function streamFile(res, filePath) {

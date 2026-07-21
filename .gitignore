@@ -1,5 +1,6 @@
 .env
 data/orders.json
+storage/
 public/uploads/*
 !public/uploads/.gitkeep
 !public/uploads/products/

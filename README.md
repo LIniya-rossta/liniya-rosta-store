@@ -70,23 +70,52 @@ TELEGRAM_WEBHOOK_SECRET=случайная_длинная_строка
 
 `data/orders.json` не коммитится в GitHub: это рабочие заказы клиентов.
 
-## Деплой через GitHub
+## Деплой на Render
 
-GitHub Pages для этого проекта не подходит, потому что сайту нужен Node.js-сервер, API заказов и Telegram-бот.
-Правильная схема:
+GitHub Pages для этого проекта не подходит, потому что сайту нужен Node.js-сервер, API заказов и Telegram-бот. Правильная схема:
 
 ```text
-GitHub -> Render/Railway/VPS -> домен -> HTTPS
+GitHub -> Render Web Service -> HTTPS-домен -> Telegram webhook
 ```
 
-На хостинге нужно указать:
+В репозитории есть `render.yaml`, поэтому Render можно настроить через Blueprint:
+
+1. Откройте Render Dashboard.
+2. Нажмите `New` -> `Blueprint`.
+3. Подключите репозиторий `LIniya-rossta/liniya-rosta-store`.
+4. Оставьте Blueprint path: `render.yaml`.
+5. В поле `TELEGRAM_BOT_TOKEN` вставьте новый токен из BotFather.
+6. Нажмите `Apply`/`Create`.
+
+Если создаете вручную через `New Web Service`, выбирайте именно `Web Services`, не `Static Sites`, и укажите:
 
 ```text
-Build command: npm install
+Build command: npm install --omit=dev
 Start command: npm start
+Health check path: /api/health
 ```
 
-И добавить переменные окружения из `.env.example`. Реальный `.env` и Telegram token в GitHub не загружать.
+Для нормального магазина нужен persistent disk, иначе заказы, загруженные через Telegram товары и фото могут пропасть после redeploy/restart. В Render добавьте Disk:
+
+```text
+Mount path: /opt/render/project/src/storage
+Size: 1 GB
+```
+
+Переменные окружения для Render:
+
+```env
+DATA_DIR=/opt/render/project/src/storage/data
+UPLOAD_DIR=/opt/render/project/src/storage/uploads
+ENABLE_TELEGRAM_BOT=true
+TELEGRAM_BOT_MODE=webhook
+TELEGRAM_ADMIN_IDS=8906052538
+TELEGRAM_BOT_TOKEN=новый_токен_из_BotFather
+TELEGRAM_WEBHOOK_SECRET=любая_длинная_случайная_строка
+COMPANY_WHATSAPP=996990883883
+```
+
+Render сам выдаст `RENDER_EXTERNAL_URL`, и сервер использует его для подключения Telegram webhook. Реальный `.env` и Telegram token в GitHub не загружать.
 
 ## Видео на первом экране
 
