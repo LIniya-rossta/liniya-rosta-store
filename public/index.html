@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#8da0ab">
+    <meta name="theme-color" content="#07111a" media="(prefers-color-scheme: dark)">
+    <title>Линия Роста - интернет-магазин</title>
+    <meta
+      name="description"
+      content="Интернет-магазин Линия Роста: натяжные потолки, SPC ламинат, комплектующие, корзина, оформление заказа и онлайн-заявка на замер от 50 м²."
+    >
+    <link rel="icon" href="/assets/logo.png">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="progress-line" id="progressLine"></div>
+    <div class="ambient-lines" aria-hidden="true"></div>
+
+    <header class="store-header" id="storeHeader">
+      <div class="header-panel">
+        <a class="brand" href="/" data-link aria-label="Линия Роста">
+          <img src="/assets/logo.png" alt="Линия Роста">
+          <span>
+            <strong>Линия Роста</strong>
+          </span>
+        </a>
+
+        <nav class="nav-links" aria-label="Навигация магазина">
+          <a href="/" data-link>Главная</a>
+          <a href="/catalog" data-link>Каталог</a>
+          <a href="/cart" data-link>Корзина</a>
+        </nav>
+
+        <div class="header-actions">
+          <a class="header-call" id="whatsappHeader" href="#" target="_blank" rel="noreferrer">WhatsApp</a>
+          <a class="instagram-link" href="https://www.instagram.com/liniya_rosta.kg/" target="_blank" rel="noreferrer" aria-label="Instagram Линия Роста">
+            <span aria-hidden="true"></span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main id="app" class="app-shell" aria-live="polite"></main>
+
+    <nav class="bottom-nav" aria-label="Быстрая навигация">
+      <a href="/" data-link><span class="nav-icon nav-home" aria-hidden="true"></span>Главная</a>
+      <a href="/catalog" data-link><span class="nav-icon nav-catalog" aria-hidden="true"></span>Каталог</a>
+      <a href="/cart" data-link><span class="nav-icon nav-cart" aria-hidden="true"></span>Корзина</a>
+      <a href="/measure" data-link><span class="nav-icon nav-measure" aria-hidden="true"></span>Замер</a>
+    </nav>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+.env
+data/orders.json
+public/uploads/*
+!public/uploads/.gitkeep
+!public/uploads/products/
+!public/uploads/products/**
+!public/uploads/catalog/
+!public/uploads/catalog/**
+.DS_Store
+node_modules
+npm-debug.log*
