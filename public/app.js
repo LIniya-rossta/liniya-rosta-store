@@ -73,17 +73,6 @@ const reviews = [
   }
 ];
 
-const categoriesFallback = [
-  "Все",
-  "SPC ламинат",
-  "Профиля",
-  "Багет",
-  "Гардины",
-  "Пленка",
-  "Вентиляция",
-  "Инструмент"
-];
-
 const state = {
   products: [],
   category: "Все",
@@ -207,7 +196,6 @@ function renderHome() {
 function renderCatalog() {
   const visibleProducts = getStoreProducts();
   const filtered = filterProducts(visibleProducts);
-  const isPreview = !state.products.length;
 
   elements.app.innerHTML = `
     <section class="shop-page page-section">
@@ -215,7 +203,7 @@ function renderCatalog() {
         <div>
           <span class="overline">Каталог</span>
           <h1>Товары Линии Роста</h1>
-          <p>${isPreview ? "Выберите направление, а менеджер уточнит наличие и подберет позиции под ваш объект." : "Добавьте товары в корзину и оформите заказ."}</p>
+          <p>Добавьте товары в корзину и оформите заказ.</p>
         </div>
         <a class="btn btn-soft" href="/cart" data-link>Корзина</a>
       </div>
@@ -230,11 +218,6 @@ function renderCatalog() {
             <button class="${category === state.category ? "is-active" : ""}" data-category="${escapeHtml(category)}">${escapeHtml(category)}</button>
           `).join("")}
         </div>
-      </div>
-
-      <div class="catalog-note reveal ${isPreview ? "" : "is-hidden"}">
-        <strong>Подбор под объект</strong>
-        <span>Напишите в WhatsApp, если нужен быстрый расчет материалов.</span>
       </div>
 
       <div class="product-grid" id="catalogGrid">
@@ -448,6 +431,15 @@ function emptyCart() {
 }
 
 function emptySearch() {
+  if (!state.products.length) {
+    return `
+      <div class="empty-shop">
+        <h2>Каталог загружается</h2>
+        <p>Обновите страницу через пару секунд. Если товары не появились, проверьте интернет или Render.</p>
+      </div>
+    `;
+  }
+
   return `
     <div class="empty-shop">
       <h2>Ничего не найдено</h2>
@@ -672,7 +664,7 @@ function getCartLines() {
 }
 
 function getStoreProducts() {
-  return state.products.length ? state.products : previewProducts;
+  return state.products;
 }
 
 function productImageFit(product) {
@@ -745,7 +737,7 @@ function filterProducts(products) {
 function catalogCategories(products) {
   const categories = products.length
     ? ["Все", ...new Set(products.map((product) => product.category || "Без категории"))]
-    : categoriesFallback;
+    : ["Все"];
   if (!categories.includes(state.category)) state.category = "Все";
   return categories;
 }
