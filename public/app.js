@@ -1,6 +1,7 @@
 const routes = new Set(["/", "/catalog", "/cart", "/checkout", "/success", "/measure"]);
 const money = new Intl.NumberFormat("ru-RU");
 const KYRGYZ_TIME_ZONE = "Asia/Bishkek";
+const THEME_STORAGE_KEY = "lr-theme";
 
 const previewProducts = [
   {
@@ -79,7 +80,8 @@ const state = {
   category: "Все",
   search: "",
   cart: loadCart(),
-  lastOrder: loadLastOrder()
+  lastOrder: loadLastOrder(),
+  theme: loadTheme()
 };
 
 const elements = {
@@ -88,13 +90,15 @@ const elements = {
   progress: document.getElementById("progressLine"),
   cartCount: document.getElementById("cartCount"),
   toast: document.getElementById("toast"),
-  whatsappHeader: document.getElementById("whatsappHeader")
+  whatsappHeader: document.getElementById("whatsappHeader"),
+  themeToggle: document.getElementById("themeToggle")
 };
 
 init();
 
 async function init() {
   elements.whatsappHeader.href = whatsAppLink("Здравствуйте! Пишу с сайта Линия Роста.");
+  applyTheme(state.theme);
   bindGlobalEvents();
   await loadProducts();
   renderRoute();
@@ -112,6 +116,7 @@ function bindGlobalEvents() {
 
   window.addEventListener("popstate", renderRoute);
   window.addEventListener("scroll", updateHeader, { passive: true });
+  elements.themeToggle?.addEventListener("click", toggleTheme);
   updateHeader();
 }
 
@@ -148,6 +153,7 @@ function renderRoute() {
 }
 
 function renderHome() {
+  const homeProducts = getHomeProducts();
   elements.app.innerHTML = `
     <section class="hero page-section">
       <div class="hero-media">
@@ -180,7 +186,7 @@ function renderHome() {
         <p>Ламинат, профили, пленка и монтажные аксессуары.</p>
       </div>
       <div class="product-grid preview-grid reveal">
-        ${previewProducts.map((product) => productCard(product)).join("")}
+        ${homeProducts.map((product) => productCard(product)).join("")}
       </div>
       <div class="center-row reveal">
         <a class="btn btn-primary" href="/catalog" data-link>Открыть весь каталог</a>
@@ -391,10 +397,34 @@ function productCard(product) {
           <strong>${hasPrice ? formatMoney(product.price) : "Цена по запросу"}</strong>
           ${hasPrice ? `<small>/ ${escapeHtml(unit)}</small>` : ""}
         </div>
-        <button class="add-to-cart" type="button" data-add="${escapeHtml(product.id)}">Добавить в корзину</button>
+        <div class="product-cart-control" data-card-control="${escapeHtml(product.id)}">
+          ${productCardCartControl(product)}
+        </div>
       </div>
     </article>
   `;
+}
+
+function productCardCartControl(product) {
+  const productId = product.id;
+  const qty = state.cart[productId] || 0;
+  const unit = product.unit || "шт";
+  if (qty > 0) {
+    const step = isMeasuredUnit(unit) ? "0.1" : "1";
+    const min = isMeasuredUnit(unit) ? "0.1" : "1";
+    return `
+      <div class="card-qty-control">
+        <button type="button" data-card-minus="${escapeHtml(productId)}" aria-label="Уменьшить количество">−</button>
+        <label>
+          <input type="number" min="${min}" step="${step}" inputmode="decimal" value="${escapeHtml(inputQtyValue(qty))}" data-card-qty-input="${escapeHtml(productId)}">
+          <span>${escapeHtml(unit)}</span>
+        </label>
+        <button type="button" data-card-plus="${escapeHtml(productId)}" aria-label="Увеличить количество">+</button>
+      </div>
+    `;
+  }
+
+  return `<button class="add-to-cart" type="button" data-add="${escapeHtml(productId)}">Добавить в корзину</button>`;
 }
 
 function cartLayout(lines) {
@@ -559,7 +589,20 @@ function renderCatalogGrid() {
 
 function bindProductButtons() {
   document.querySelectorAll("[data-add]").forEach((button) => {
-    button.addEventListener("click", () => addToCart(button.dataset.add));
+    button.onclick = () => {
+      addToCart(button.dataset.add);
+      refreshProductCardControls(button.dataset.add);
+    };
+  });
+  document.querySelectorAll("[data-card-minus]").forEach((button) => {
+    button.onclick = () => setCatalogQty(button.dataset.cardMinus, (state.cart[button.dataset.cardMinus] || 0) - qtyStep(button.dataset.cardMinus));
+  });
+  document.querySelectorAll("[data-card-plus]").forEach((button) => {
+    button.onclick = () => setCatalogQty(button.dataset.cardPlus, (state.cart[button.dataset.cardPlus] || 0) + qtyStep(button.dataset.cardPlus));
+  });
+  document.querySelectorAll("[data-card-qty-input]").forEach((input) => {
+    input.onchange = () => setCatalogQty(input.dataset.cardQtyInput, input.value);
+    input.onblur = () => setCatalogQty(input.dataset.cardQtyInput, input.value);
   });
 }
 
@@ -755,7 +798,7 @@ async function submitOrder(payload, note, onSuccess) {
 }
 
 function addToCart(productId, qtyValue) {
-  const product = getStoreProducts().find((item) => item.id === productId);
+  const product = findProduct(productId);
   if (!product) return toast("Товар не найден.");
   const qty = normalizeQty(product, qtyValue || defaultQty(product));
   state.cart[productId] = normalizeQty(product, (state.cart[productId] || 0) + qty);
@@ -764,14 +807,29 @@ function addToCart(productId, qtyValue) {
   toast(`${product.title} добавлен: ${formatQty(qty)} ${product.unit || "шт"}`);
 }
 
-function setQty(productId, qty) {
-  const product = getStoreProducts().find((item) => item.id === productId);
+function setQty(productId, qty, shouldRenderCart = true) {
+  const product = findProduct(productId);
   const numericQty = parseQty(qty);
   if (numericQty <= 0 || !product) delete state.cart[productId];
   else state.cart[productId] = normalizeQty(product, numericQty);
   saveCart();
   updateCartCount();
-  renderCartPage();
+  if (shouldRenderCart) renderCartPage();
+}
+
+function setCatalogQty(productId, qty) {
+  setQty(productId, qty, false);
+  refreshProductCardControls(productId);
+}
+
+function refreshProductCardControls(productId) {
+  const product = findProduct(productId);
+  if (!product) return;
+  document.querySelectorAll("[data-card-control]").forEach((node) => {
+    if (node.dataset.cardControl !== productId) return;
+    node.innerHTML = productCardCartControl(product);
+  });
+  bindProductButtons();
 }
 
 function getCartLines() {
@@ -785,7 +843,16 @@ function getCartLines() {
 }
 
 function getStoreProducts() {
-  return state.products;
+  return state.products.length ? state.products : previewProducts;
+}
+
+function getHomeProducts() {
+  const products = getStoreProducts();
+  return products.length ? products.slice(0, 4) : previewProducts;
+}
+
+function findProduct(productId) {
+  return getStoreProducts().find((item) => item.id === productId);
 }
 
 function productImageFit(product) {
@@ -804,7 +871,7 @@ function cartQuantityControl(product, qty) {
       <div class="qty-control is-measured">
         <label>
           <span>${escapeHtml(unit)}</span>
-          <input type="number" min="0.1" step="0.1" inputmode="decimal" value="${escapeHtml(formatQty(qty))}" data-qty-input="${escapeHtml(product.id)}">
+          <input type="number" min="0.1" step="0.1" inputmode="decimal" value="${escapeHtml(inputQtyValue(qty))}" data-qty-input="${escapeHtml(product.id)}">
         </label>
         <button type="button" data-remove="${escapeHtml(product.id)}">×</button>
       </div>
@@ -829,6 +896,11 @@ function defaultQty(product) {
   return isMeasuredUnit(product.unit) ? 1 : 1;
 }
 
+function qtyStep(productId) {
+  const product = findProduct(productId);
+  return product && isMeasuredUnit(product.unit) ? 0.1 : 1;
+}
+
 function parseQty(value) {
   const number = Number(String(value || "").replace(",", "."));
   return Number.isFinite(number) ? number : 0;
@@ -845,6 +917,11 @@ function normalizeQty(product, value) {
 function formatQty(value) {
   const number = Number(value || 0);
   return Number.isInteger(number) ? String(number) : String(Math.round(number * 10) / 10).replace(".", ",");
+}
+
+function inputQtyValue(value) {
+  const number = Number(value || 0);
+  return Number.isInteger(number) ? String(number) : String(Math.round(number * 10) / 10);
 }
 
 function filterProducts(products) {
@@ -916,6 +993,35 @@ function navigate(path) {
 function normalizePath(path) {
   if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
   return path;
+}
+
+function loadTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    return saved === "dark" || saved === "light" ? saved : systemTheme();
+  } catch {
+    return systemTheme();
+  }
+}
+
+function systemTheme() {
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function toggleTheme() {
+  applyTheme(state.theme === "dark" ? "light" : "dark");
+}
+
+function applyTheme(theme) {
+  state.theme = theme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = state.theme;
+  elements.themeToggle?.setAttribute("aria-pressed", String(state.theme === "dark"));
+  elements.themeToggle?.setAttribute("aria-label", state.theme === "dark" ? "Включить светлую тему" : "Включить темную тему");
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, state.theme);
+  } catch {
+    // Theme persistence is nice to have; the UI still works without storage.
+  }
 }
 
 function loadCart() {
