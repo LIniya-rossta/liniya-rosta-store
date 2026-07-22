@@ -432,7 +432,11 @@ async function createInstallerRequest(payload) {
       title: product.title,
       category: product.category,
       price: Number(product.price || 0),
-      unit: product.unit || "шт"
+      unit: product.unit || "шт",
+      stock: product.stock || "",
+      description: product.description || "",
+      image: product.image || "",
+      imageFit: product.imageFit || ""
     },
     object,
     fulfillment,
@@ -1920,6 +1924,7 @@ function formatInstallerRequest(request) {
   const method = fulfillment.method === "pickup" ? "Самовывоз" : "Доставка";
   const photoUrl = request.sketchPhoto?.url ? new URL(request.sketchPhoto.url, PUBLIC_BASE_URL).toString() : "";
   const drawingUrl = request.sketchDrawing?.url ? new URL(request.sketchDrawing.url, PUBLIC_BASE_URL).toString() : "";
+  const materialImageUrl = material.image ? new URL(material.image, PUBLIC_BASE_URL).toString() : "";
   const dimensionLines = Object.entries(sketch.dimensions || {}).map(([key, value]) => `${key}: ${formatQty(value)} м`);
   const diagonalLines = Object.entries(sketch.diagonals || {}).map(([key, value]) => `${key}: ${formatQty(value)} м`);
   const holeLines = (sketch.holes || []).map((hole, index) => `${index + 1}. ${holeLabel(hole)} (${Math.round(hole.x)}, ${Math.round(hole.y)})`);
@@ -1939,7 +1944,11 @@ function formatInstallerRequest(request) {
     [
       "Материал",
       material.title || "не выбран",
-      material.price ? `Цена: ${formatMoney(material.price)} / ${material.unit || "шт"}` : "Цена: по запросу"
+      material.category ? `Категория: ${material.category}` : "",
+      material.price ? `Цена: ${formatMoney(material.price)} / ${material.unit || "шт"}` : "Цена: по запросу",
+      material.stock ? `Остаток: ${material.stock}` : "",
+      material.description ? `Описание: ${material.description}` : "",
+      materialImageUrl ? `Фото материала: ${materialImageUrl}` : ""
     ],
     [
       "Объект",

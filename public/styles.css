@@ -730,6 +730,15 @@ select {
   padding-right: 42px;
 }
 
+.field-title {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--steel);
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
 .ready-field {
   position: relative;
   display: grid;
@@ -1726,6 +1735,183 @@ select {
   background: rgba(255, 255, 255, 0.08);
   font-size: 12px;
   font-weight: 900;
+}
+
+.material-picker {
+  position: relative;
+  z-index: 8;
+}
+
+.material-picker.is-open {
+  z-index: 30;
+}
+
+.material-trigger,
+.material-option {
+  width: 100%;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  text-align: left;
+}
+
+.material-trigger {
+  min-height: 76px;
+  border-radius: 22px;
+  padding: 10px 14px 10px 10px;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 18px;
+  gap: 12px;
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05)),
+    rgba(255, 255, 255, 0.08);
+  box-shadow: var(--inner-glass);
+}
+
+.material-trigger i {
+  width: 10px;
+  height: 10px;
+  border-right: 3px solid currentColor;
+  border-bottom: 3px solid currentColor;
+  transform: rotate(45deg);
+  opacity: 0.72;
+}
+
+.material-picker.is-open .material-trigger i {
+  transform: rotate(225deg);
+}
+
+.material-trigger-text {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.material-trigger-text strong,
+.material-option strong {
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 950;
+}
+
+.material-trigger-text small,
+.material-option small,
+.material-description {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.material-thumb {
+  width: 56px;
+  height: 56px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--gold-2);
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.material-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.material-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  max-height: min(560px, 70vh);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 24px;
+  padding: 14px;
+  overflow: auto;
+  background:
+    linear-gradient(135deg, rgba(32, 47, 61, 0.96), rgba(7, 17, 26, 0.98)),
+    rgba(7, 17, 26, 0.94);
+  box-shadow: 0 34px 80px rgba(0, 0, 0, 0.5), var(--inner-glass);
+}
+
+.material-panel-head {
+  position: sticky;
+  top: -14px;
+  z-index: 2;
+  padding-bottom: 10px;
+  background: linear-gradient(180deg, rgba(26, 39, 51, 0.98), rgba(26, 39, 51, 0.82));
+}
+
+.material-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.material-tabs button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 11px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.material-tabs button.is-active {
+  background: #ffffff;
+  color: #07111a;
+}
+
+.material-options {
+  display: grid;
+  gap: 9px;
+}
+
+.material-option {
+  min-height: 92px;
+  border-radius: 18px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.material-option:hover,
+.material-option.is-selected {
+  border-color: rgba(99, 230, 255, 0.54);
+  background: rgba(99, 230, 255, 0.1);
+}
+
+.material-option-body,
+.material-option-top {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.material-option-top em {
+  color: var(--gold-2);
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.material-description {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .sketch-dimensions {
@@ -2862,6 +3048,30 @@ body[data-theme="dark"] .summary-total {
   .dimension-item button {
     min-height: 30px;
     padding: 5px 7px;
+  }
+
+  .material-trigger {
+    min-height: 68px;
+    grid-template-columns: 48px minmax(0, 1fr) 14px;
+    gap: 10px;
+    padding: 9px 12px 9px 9px;
+  }
+
+  .material-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+  }
+
+  .material-panel {
+    position: fixed;
+    inset: auto 12px 86px 12px;
+    max-height: 72vh;
+    border-radius: 22px;
+  }
+
+  .material-option {
+    grid-template-columns: 52px minmax(0, 1fr);
   }
 
   .success-card {

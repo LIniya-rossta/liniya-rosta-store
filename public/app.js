@@ -406,12 +406,7 @@ function renderInstaller() {
           <label><span>Имя монтажника</span><input name="name" required autocomplete="name" placeholder="Ваше имя"></label>
           <label><span>Телефон</span><input name="phone" required autocomplete="tel" inputmode="tel" value="+996 " placeholder="+996 ..." data-phone-autocode="+996 "></label>
           <label class="full"><span>Адрес объекта</span><input name="objectAddress" required autocomplete="street-address" placeholder="Район, улица, дом"></label>
-          <label>
-            <span>Материал</span>
-            <select name="materialId" required>
-              ${materials.map((product) => `<option value="${escapeHtml(product.id)}">${escapeHtml(product.title)} · ${product.price ? `${formatMoney(product.price)} / ${product.unit || "шт"}` : "цена по запросу"}</option>`).join("")}
-            </select>
-          </label>
+          ${materialPickerTemplate(materials)}
           <label>
             <span>Менеджер</span>
             <select name="managerId" required>
@@ -466,6 +461,7 @@ function renderInstaller() {
   bindInstallerFulfillmentControls();
   bindInstallerSketch();
   bindInstallerPhoto();
+  bindInstallerMaterialPicker();
   document.getElementById("installerForm")?.addEventListener("submit", submitInstallerRequest);
 }
 
@@ -690,6 +686,91 @@ function installerMaterialScore(product) {
   if (text.includes("м²") || text.includes("м2") || text.includes("кв")) return 2;
   if (text.includes("проф") || text.includes("багет")) return 1;
   return 0;
+}
+
+function materialPickerTemplate(materials) {
+  const selected = materials[0] || {};
+  const categories = ["Все", ...new Set(materials.map((product) => product.category || "Без категории"))];
+  return `
+    <div class="material-picker full" id="installerMaterialPicker">
+      <span class="field-title">Материал</span>
+      <input type="hidden" name="materialId" value="${escapeHtml(selected.id || "")}">
+      <button class="material-trigger" type="button" aria-expanded="false" data-material-trigger>
+        ${materialTriggerContent(selected)}
+      </button>
+      <div class="material-panel" data-material-panel hidden>
+        <div class="material-panel-head">
+          <input type="search" inputmode="search" placeholder="Найти пленку, профиль, обои..." data-material-search>
+        </div>
+        <div class="material-tabs" aria-label="Категории материалов">
+          ${categories.map((category, index) => `<button type="button" data-material-category="${escapeHtml(category)}" class="${index === 0 ? "is-active" : ""}">${escapeHtml(category)}</button>`).join("")}
+        </div>
+        <div class="material-options">
+          ${materials.map((product, index) => materialOptionTemplate(product, index === 0)).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function materialTriggerContent(product) {
+  if (!product?.id) {
+    return `
+      <span class="material-thumb is-empty"></span>
+      <span class="material-trigger-text">
+        <strong>Материалы не загружены</strong>
+        <small>Проверьте каталог</small>
+      </span>
+      <i aria-hidden="true"></i>
+    `;
+  }
+  return `
+    ${materialThumb(product)}
+    <span class="material-trigger-text">
+      <strong>${escapeHtml(product.title || "Материал")}</strong>
+      <small>${escapeHtml(materialMeta(product))}</small>
+    </span>
+    <i aria-hidden="true"></i>
+  `;
+}
+
+function materialOptionTemplate(product, selected = false) {
+  const searchable = `${product.title || ""} ${product.category || ""} ${product.description || ""} ${product.stock || ""}`.toLowerCase();
+  return `
+    <button
+      class="material-option ${selected ? "is-selected" : ""}"
+      type="button"
+      data-material-option="${escapeHtml(product.id)}"
+      data-material-category-value="${escapeHtml(product.category || "Без категории")}"
+      data-material-search-value="${escapeHtml(searchable)}"
+    >
+      ${materialThumb(product)}
+      <span class="material-option-body">
+        <span class="material-option-top">
+          <strong>${escapeHtml(product.title || "Материал")}</strong>
+          <em>${escapeHtml(product.price ? `${formatMoney(product.price)} / ${product.unit || "шт"}` : "Цена по запросу")}</em>
+        </span>
+        <small>${escapeHtml(materialMeta(product))}</small>
+        ${product.description ? `<span class="material-description">${escapeHtml(product.description)}</span>` : ""}
+      </span>
+    </button>
+  `;
+}
+
+function materialThumb(product) {
+  if (product?.image) {
+    return `<span class="material-thumb"><img src="${escapeHtml(product.image)}" alt=""></span>`;
+  }
+  const letter = String(product?.category || product?.title || "M").trim().charAt(0).toUpperCase();
+  return `<span class="material-thumb is-empty">${escapeHtml(letter)}</span>`;
+}
+
+function materialMeta(product) {
+  return [
+    product.category || "Без категории",
+    product.stock || "",
+    product.unit ? `ед.: ${product.unit}` : ""
+  ].filter(Boolean).join(" · ");
 }
 
 function managerOptionsTemplate() {
@@ -1090,6 +1171,69 @@ function bindInstallerFulfillmentControls() {
   updateAddressState();
 }
 
+function bindInstallerMaterialPicker() {
+  const root = document.getElementById("installerMaterialPicker");
+  const trigger = root?.querySelector("[data-material-trigger]");
+  const panel = root?.querySelector("[data-material-panel]");
+  const input = root?.querySelector('input[name="materialId"]');
+  const search = root?.querySelector("[data-material-search]");
+  const categoryButtons = [...(root?.querySelectorAll("[data-material-category]") || [])];
+  const optionButtons = [...(root?.querySelectorAll("[data-material-option]") || [])];
+  if (!root || !trigger || !panel || !input) return;
+
+  let activeCategory = "Все";
+  const products = new Map(installerMaterials().map((product) => [product.id, product]));
+
+  const close = () => {
+    root.classList.remove("is-open");
+    panel.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  };
+  const open = () => {
+    root.classList.add("is-open");
+    panel.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    search?.focus();
+  };
+  const applyFilters = () => {
+    const query = String(search?.value || "").trim().toLowerCase();
+    optionButtons.forEach((button) => {
+      const categoryMatch = activeCategory === "Все" || button.dataset.materialCategoryValue === activeCategory;
+      const searchMatch = !query || String(button.dataset.materialSearchValue || "").includes(query);
+      button.hidden = !(categoryMatch && searchMatch);
+    });
+  };
+  const selectMaterial = (productId) => {
+    const product = products.get(productId);
+    if (!product) return;
+    input.value = product.id;
+    trigger.innerHTML = materialTriggerContent(product);
+    optionButtons.forEach((button) => {
+      button.classList.toggle("is-selected", button.dataset.materialOption === product.id);
+    });
+    close();
+  };
+
+  trigger.addEventListener("click", () => {
+    if (panel.hidden) open();
+    else close();
+  });
+  search?.addEventListener("input", applyFilters);
+  categoryButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      activeCategory = button.dataset.materialCategory || "Все";
+      categoryButtons.forEach((item) => item.classList.toggle("is-active", item === button));
+      applyFilters();
+    });
+  });
+  optionButtons.forEach((button) => {
+    button.addEventListener("click", () => selectMaterial(button.dataset.materialOption));
+  });
+  document.addEventListener("click", (event) => {
+    if (!root.contains(event.target)) close();
+  });
+}
+
 function bindInstallerSketch() {
   const board = document.getElementById("sketchBoard");
   const meta = document.getElementById("sketchMeta");
@@ -1395,7 +1539,9 @@ async function submitInstallerRequest(event) {
   const readyDate = form.get("readyDate");
   const readyTime = form.get("readyTime");
   const method = form.get("method");
+  const materialId = form.get("materialId");
 
+  if (!materialId) return setNote(note, "Выберите материал.", true);
   if (!readyDate || !readyTime) return setNote(note, "Выберите дату и время готовности.", true);
   if (isSundayDate(readyDate)) return setNote(note, "В воскресенье магазин не работает. Выберите другую дату.", true);
   const missingDimensions = sketchEdges(state.installerSketch.points)
@@ -1411,7 +1557,7 @@ async function submitInstallerRequest(event) {
       phone: form.get("phone")
     },
     managerId: form.get("managerId"),
-    materialId: form.get("materialId"),
+    materialId,
     object: {
       address: form.get("objectAddress"),
       area: form.get("area"),
