@@ -1,7 +1,6 @@
 const routes = new Set(["/", "/catalog", "/cart", "/checkout", "/success", "/measure"]);
 const money = new Intl.NumberFormat("ru-RU");
 const KYRGYZ_TIME_ZONE = "Asia/Bishkek";
-const THEME_STORAGE_KEY = "lr-theme";
 
 const previewProducts = [
   {
@@ -80,8 +79,7 @@ const state = {
   category: "Все",
   search: "",
   cart: loadCart(),
-  lastOrder: loadLastOrder(),
-  theme: loadTheme()
+  lastOrder: loadLastOrder()
 };
 
 const elements = {
@@ -90,15 +88,13 @@ const elements = {
   progress: document.getElementById("progressLine"),
   cartCount: document.getElementById("cartCount"),
   toast: document.getElementById("toast"),
-  whatsappHeader: document.getElementById("whatsappHeader"),
-  themeToggle: document.getElementById("themeToggle")
+  whatsappHeader: document.getElementById("whatsappHeader")
 };
 
 init();
 
 async function init() {
   elements.whatsappHeader.href = whatsAppLink("Здравствуйте! Пишу с сайта Линия Роста.");
-  applyTheme(state.theme);
   bindGlobalEvents();
   await loadProducts();
   renderRoute();
@@ -116,7 +112,6 @@ function bindGlobalEvents() {
 
   window.addEventListener("popstate", renderRoute);
   window.addEventListener("scroll", updateHeader, { passive: true });
-  elements.themeToggle?.addEventListener("click", toggleTheme);
   updateHeader();
 }
 
@@ -194,7 +189,6 @@ function renderHome() {
     </section>
 
     ${reviewsSection()}
-    ${measurePromo()}
     ${contactsSection()}
   `;
   bindProductButtons();
@@ -522,22 +516,6 @@ function reviewsSection() {
             </footer>
           </article>
         `).join("")}
-      </div>
-    </section>
-  `;
-}
-
-function measurePromo() {
-  return `
-    <section class="page-section measure-promo">
-      <div class="measure-promo-copy reveal">
-        <span class="overline">Замер онлайн</span>
-        <h2>Большой объект? Отправьте заявку отдельно от корзины</h2>
-        <p>Для площадей от 50 м² заявка оформляется отдельно от корзины. Это удобно для квартир, домов и коммерческих объектов.</p>
-        <a class="btn btn-primary" href="/measure" data-link>Заказать замер</a>
-      </div>
-      <div class="measure-promo-visual reveal" aria-hidden="true">
-        <span>50 м²+</span>
       </div>
     </section>
   `;
@@ -993,35 +971,6 @@ function navigate(path) {
 function normalizePath(path) {
   if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
   return path;
-}
-
-function loadTheme() {
-  try {
-    const saved = localStorage.getItem(THEME_STORAGE_KEY);
-    return saved === "dark" || saved === "light" ? saved : systemTheme();
-  } catch {
-    return systemTheme();
-  }
-}
-
-function systemTheme() {
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function toggleTheme() {
-  applyTheme(state.theme === "dark" ? "light" : "dark");
-}
-
-function applyTheme(theme) {
-  state.theme = theme === "dark" ? "dark" : "light";
-  document.body.dataset.theme = state.theme;
-  elements.themeToggle?.setAttribute("aria-pressed", String(state.theme === "dark"));
-  elements.themeToggle?.setAttribute("aria-label", state.theme === "dark" ? "Включить светлую тему" : "Включить темную тему");
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, state.theme);
-  } catch {
-    // Theme persistence is nice to have; the UI still works without storage.
-  }
 }
 
 function loadCart() {
