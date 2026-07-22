@@ -25,10 +25,20 @@ const TELEGRAM_ADMINS = new Set(
 const ENABLE_TELEGRAM_BOT = process.env.ENABLE_TELEGRAM_BOT !== "false";
 const TELEGRAM_BOT_MODE = process.env.TELEGRAM_BOT_MODE || (PUBLIC_BASE_URL.startsWith("https://") ? "webhook" : "polling");
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || "";
+const TELEGRAM_ADMIN_LOGIN = process.env.TELEGRAM_ADMIN_LOGIN || "LiniyaRosta";
+const TELEGRAM_ADMIN_PASSWORD = process.env.TELEGRAM_ADMIN_PASSWORD || "";
+const TELEGRAM_OBSERVERS = new Set(
+  String(process.env.TELEGRAM_OBSERVER_IDS || process.env.TELEGRAM_ADMIN_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+);
+const ADMIN_SESSION_MS = Math.max(1, Number(process.env.TELEGRAM_ADMIN_SESSION_HOURS || 12)) * 60 * 60 * 1000;
 const COMPANY_WHATSAPP = process.env.COMPANY_WHATSAPP || "996990883883";
 
 const PRODUCTS_FILE = path.join(DATA_DIR, "products.json");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
+const WATCHERS_FILE = path.join(DATA_DIR, "telegram-watchers.json");
 const DEMO_PRODUCTS = [
   {
     id: "preview-laminate",
@@ -89,6 +99,7 @@ const STATUS_LABELS = {
 };
 
 const botState = new Map();
+const adminSessions = new Map();
 let botOffset = 0;
 
 ensureStorage();
@@ -107,7 +118,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/orders") {
       const payload = await readBody(req);
       const order = await createOrder(payload);
-      notifyAdmins(formatOrder(order), orderKeyboard(order)).catch((error) => {
+      notifyOrderWatchers(order).catch((error) => {
         console.error("Telegram notification failed:", error.message);
       });
       return json(res, 201, { order });
@@ -115,6 +126,9 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname.startsWith("/api/telegram/webhook/")) {
       if (!TELEGRAM_WEBHOOK_SECRET || url.pathname !== telegramWebhookPath()) {
+        return text(res, 403, "Forbidden");
+      }
+      if (req.headers["x-telegram-bot-api-secret-token"] !== TELEGRAM_WEBHOOK_SECRET) {
         return text(res, 403, "Forbidden");
       }
       if (!ENABLE_TELEGRAM_BOT || !TELEGRAM_BOT_TOKEN || !TELEGRAM_ADMINS.size) {
@@ -130,7 +144,8 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         telegram: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMINS.size),
         telegramEnabled: ENABLE_TELEGRAM_BOT,
-        telegramMode: TELEGRAM_BOT_MODE
+        telegramMode: TELEGRAM_BOT_MODE,
+        telegramAdminPassword: Boolean(TELEGRAM_ADMIN_PASSWORD)
       });
     }
 
@@ -179,6 +194,7 @@ function ensureStorage() {
     }
   }
   if (!fs.existsSync(ORDERS_FILE)) fs.writeFileSync(ORDERS_FILE, "[]\n");
+  if (!fs.existsSync(WATCHERS_FILE)) fs.writeFileSync(WATCHERS_FILE, "[]\n");
 }
 
 async function readJson(file, fallback) {
@@ -416,6 +432,7 @@ function text(res, statusCode, body) {
 }
 
 async function startTelegramIntegration() {
+  await setTelegramCommands();
   if (TELEGRAM_BOT_MODE === "webhook") {
     await setupTelegramWebhook();
     return;
@@ -435,9 +452,23 @@ async function setupTelegramWebhook() {
   const webhookUrl = new URL(telegramWebhookPath(), PUBLIC_BASE_URL).toString();
   await tgApi("setWebhook", {
     url: webhookUrl,
+    secret_token: TELEGRAM_WEBHOOK_SECRET,
     allowed_updates: ["message", "callback_query"]
   });
   console.log(`Telegram webhook connected: ${webhookUrl.replace(TELEGRAM_WEBHOOK_SECRET, "***")}`);
+}
+
+async function setTelegramCommands() {
+  await tgApi("setMyCommands", {
+    commands: [
+      { command: "start", description: "Запустить Telegram-панель" },
+      { command: "admin", description: "Войти в админ-панель" },
+      { command: "watch", description: "Наблюдать за новыми заказами" },
+      { command: "orders", description: "Последние заказы" },
+      { command: "week", description: "Сводка за неделю" },
+      { command: "cancel", description: "Отменить текущее действие" }
+    ]
+  });
 }
 
 function telegramWebhookPath() {
@@ -472,37 +503,133 @@ async function handleTelegramUpdate(update) {
   const message = update.message;
   const chatId = String(message.chat.id);
   const fromId = String(message.from?.id || "");
-
-  if (!TELEGRAM_ADMINS.has(fromId)) {
-    await sendMessage(chatId, "Доступ только для администраторов Линии Роста.");
-    return;
-  }
-
   const textValue = (message.text || message.caption || "").trim();
-  const state = botState.get(fromId);
+  const key = stateKey(chatId, fromId);
+  const state = botState.get(key);
 
   if (textValue === "❌ Отмена" || textValue === "/cancel") {
-    botState.delete(fromId);
-    await sendMenu(chatId, "Действие отменено.");
-    return;
+    botState.delete(key);
+    return isAdminSession(fromId)
+      ? sendAdminPanel(chatId, "Действие отменено.")
+      : sendStartMenu(chatId, "Действие отменено.");
   }
 
-  if (state) return continueProductFlow(chatId, fromId, message, textValue, state);
+  if (state?.flow === "login") return continueLoginFlow(chatId, fromId, textValue, state);
+  if (state?.flow === "product") return continueProductFlow(chatId, fromId, message, textValue, state);
+  if (state?.flow === "edit_product") return continueFindProductFlow(chatId, fromId, textValue, state);
+  if (state?.flow === "edit_field") return continueEditFieldFlow(chatId, fromId, message, textValue, state);
 
-  if (textValue === "/start" || textValue === "Меню") return sendMenu(chatId);
-  if (textValue === "➕ Добавить товар" || textValue === "/addproduct") {
-    botState.set(fromId, { flow: "product", step: "category", product: {} });
-    return sendMessage(chatId, "Категория товара? Например: SPC ламинат, Профиля, Пленка.", cancelKeyboard());
-  }
+  if (textValue === "/start" || textValue === "Старт") return sendStartMenu(chatId);
+  if (textValue === "/admin" || textValue === "Войти в админ-панель") return startAdminLogin(chatId, fromId);
+  if (textValue === "/watch" || textValue === "Наблюдать за заказами") return subscribeWatcher(chatId, fromId, message.chat);
+  if (textValue === "/watch_off") return unsubscribeWatcher(chatId);
+
+  if (!isAdminSession(fromId)) return sendStartMenu(chatId, "Выберите режим работы бота.");
+
+  if (textValue === "➕ Добавить товар" || textValue === "/addproduct") return startProductFlow(chatId, fromId);
+  if (textValue === "✏️ Изменить товар" || textValue === "/edit") return startEditProductFlow(chatId, fromId);
   if (textValue === "📦 Товары" || textValue === "/products") return sendProducts(chatId);
-  if (textValue === "🧾 Заказы" || textValue === "/orders") return sendOrders(chatId);
-  if (textValue === "📊 Сводка" || textValue === "/summary") return sendSummary(chatId);
+  if (textValue === "🧾 Последние заказы" || textValue === "/orders") return sendOrders(chatId, { withKeyboard: true });
+  if (textValue === "📊 Сводка за неделю" || textValue === "/week" || textValue === "/summary") return sendWeeklySummary(chatId);
+  if (textValue === "🚪 Выйти") return logoutAdmin(chatId, fromId);
 
   if (textValue.startsWith("/price ")) return updateProductPrice(chatId, textValue);
   if (textValue.startsWith("/stock ")) return updateProductStock(chatId, textValue);
   if (textValue.startsWith("/hide ")) return hideProduct(chatId, textValue);
 
-  return sendMenu(chatId, "Выберите действие.");
+  return sendAdminPanel(chatId, "Выберите действие.");
+}
+
+function stateKey(chatId, fromId) {
+  return `${chatId}:${fromId}`;
+}
+
+function isAdminSession(fromId) {
+  const session = adminSessions.get(fromId);
+  if (!session) return false;
+  if (session.expiresAt <= Date.now()) {
+    adminSessions.delete(fromId);
+    return false;
+  }
+  return true;
+}
+
+function markAdminSession(fromId, chatId) {
+  adminSessions.set(fromId, {
+    chatId,
+    expiresAt: Date.now() + ADMIN_SESSION_MS
+  });
+}
+
+function canRegisterWatcher(fromId) {
+  return TELEGRAM_ADMINS.has(fromId) || TELEGRAM_OBSERVERS.has(fromId) || isAdminSession(fromId);
+}
+
+async function sendStartMenu(chatId, prefix = "Линия Роста") {
+  return sendMessage(
+    chatId,
+    `${prefix}\n\nВыберите режим: войти в админ-панель или просто получать новые заказы с сайта.`,
+    startKeyboard()
+  );
+}
+
+function startKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "Войти в админ-панель", callback_data: "entry:admin" }],
+      [{ text: "Наблюдать за заказами", callback_data: "entry:watch" }]
+    ]
+  };
+}
+
+async function startAdminLogin(chatId, fromId) {
+  botState.set(stateKey(chatId, fromId), { flow: "login", step: "login" });
+  const hint = TELEGRAM_ADMIN_PASSWORD
+    ? "Введите логин."
+    : "Пароль админ-панели не задан на сервере. Добавьте TELEGRAM_ADMIN_PASSWORD в Render Environment, затем повторите вход.";
+  return sendMessage(chatId, hint, cancelKeyboard());
+}
+
+async function continueLoginFlow(chatId, fromId, textValue, state) {
+  if (!TELEGRAM_ADMIN_PASSWORD) {
+    botState.delete(stateKey(chatId, fromId));
+    return sendStartMenu(chatId, "Админ-пароль не настроен на сервере.");
+  }
+
+  if (state.step === "login") {
+    if (textValue !== TELEGRAM_ADMIN_LOGIN) {
+      return sendMessage(chatId, "Логин неверный. Попробуйте еще раз или нажмите /cancel.", cancelKeyboard());
+    }
+    state.step = "password";
+    return sendMessage(chatId, "Введите пароль.", cancelKeyboard());
+  }
+
+  if (state.step === "password") {
+    if (textValue !== TELEGRAM_ADMIN_PASSWORD) {
+      return sendMessage(chatId, "Пароль неверный. Попробуйте еще раз или нажмите /cancel.", cancelKeyboard());
+    }
+    botState.delete(stateKey(chatId, fromId));
+    markAdminSession(fromId, chatId);
+    return sendAdminPanel(chatId, "Вход выполнен.");
+  }
+}
+
+async function logoutAdmin(chatId, fromId) {
+  adminSessions.delete(fromId);
+  botState.delete(stateKey(chatId, fromId));
+  return sendStartMenu(chatId, "Вы вышли из админ-панели.");
+}
+
+async function startProductFlow(chatId, fromId) {
+  botState.set(stateKey(chatId, fromId), {
+    flow: "product",
+    step: "category",
+    product: {
+      id: newProductId(),
+      stock: "в наличии"
+    }
+  });
+  return sendMessage(chatId, "Категория товара? Например: SPC ламинат, Профиля, Пленка.", cancelKeyboard());
 }
 
 async function continueProductFlow(chatId, adminId, message, textValue, state) {
@@ -511,6 +638,7 @@ async function continueProductFlow(chatId, adminId, message, textValue, state) {
   if (state.step === "category") {
     product.category = trimText(textValue, 80);
     if (!product.category) return sendMessage(chatId, "Напишите категорию.");
+    if (state.editing) return finishDraftEdit(chatId, state);
     state.step = "title";
     return sendMessage(chatId, "Название товара?");
   }
@@ -518,6 +646,7 @@ async function continueProductFlow(chatId, adminId, message, textValue, state) {
   if (state.step === "title") {
     product.title = trimText(textValue, 160);
     if (!product.title) return sendMessage(chatId, "Напишите название.");
+    if (state.editing) return finishDraftEdit(chatId, state);
     state.step = "price";
     return sendMessage(chatId, "Цена в сомах? Только число. Если цена договорная, напишите 0.");
   }
@@ -526,58 +655,145 @@ async function continueProductFlow(chatId, adminId, message, textValue, state) {
     const price = Number(textValue.replace(",", "."));
     if (!Number.isFinite(price) || price < 0) return sendMessage(chatId, "Нужна цена числом.");
     product.price = Math.round(price);
+    if (state.editing) return finishDraftEdit(chatId, state);
     state.step = "unit";
-    return sendMessage(chatId, "Единица измерения? Например: шт, м², пог. м, рулон.");
+    return sendMessage(chatId, "Единица измерения? Например: м², шт, пог. м, рулон.");
   }
 
   if (state.step === "unit") {
-    product.unit = trimText(textValue, 30) || "шт";
-    state.step = "stock";
-    return sendMessage(chatId, "Остаток/наличие? Например: 12 или 'в наличии'.");
-  }
-
-  if (state.step === "stock") {
-    product.stock = trimText(textValue, 80) || "в наличии";
+    product.unit = normalizeUnit(textValue);
+    if (state.editing) return finishDraftEdit(chatId, state);
     state.step = "description";
     return sendMessage(chatId, "Описание товара. Можно коротко. Чтобы пропустить, напишите 'Пропустить'.");
   }
 
   if (state.step === "description") {
     product.description = /^пропустить$/i.test(textValue) ? "" : trimText(textValue, 800);
+    if (state.editing) return finishDraftEdit(chatId, state);
     state.step = "photo";
     return sendMessage(chatId, "Отправьте фото товара или напишите 'Пропустить'.");
   }
 
   if (state.step === "photo") {
-    const id = `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    let image = "";
     if (message.photo && message.photo.length) {
-      image = await saveTelegramPhoto(message.photo, id);
+      product.image = await saveTelegramPhoto(message.photo, product.id);
     } else if (!/^пропустить$/i.test(textValue)) {
       return sendMessage(chatId, "Отправьте фото или напишите 'Пропустить'.");
     }
 
-    const savedProduct = {
-      id,
-      ...product,
-      image,
-      active: true,
-      featured: false,
-      createdAt: new Date().toISOString()
-    };
-    const products = await readJson(PRODUCTS_FILE, []);
-    products.unshift(savedProduct);
-    await writeJson(PRODUCTS_FILE, products);
-    botState.delete(adminId);
-    return sendMenu(chatId, `Товар добавлен: ${savedProduct.title}\nID: ${savedProduct.id}`);
+    state.step = "confirm";
+    state.editing = false;
+    return sendProductDraft(chatId, product);
   }
+
+  if (state.step === "confirm") {
+    return sendProductDraft(chatId, product, "Проверьте карточку и нажмите кнопку.");
+  }
+}
+
+async function finishDraftEdit(chatId, state) {
+  state.step = "confirm";
+  state.editing = false;
+  return sendProductDraft(chatId, state.product, "Поле обновлено. Проверьте карточку.");
+}
+
+async function sendProductDraft(chatId, product, prefix = "Черновик товара") {
+  const textValue = [
+    prefix,
+    "",
+    formatProduct(product),
+    "",
+    "Опубликовать товар на сайте?"
+  ].join("\n");
+  return sendMessage(chatId, textValue, productConfirmKeyboard());
+}
+
+function productConfirmKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "Опубликовать", callback_data: "product:publish" }],
+      [{ text: "Изменить", callback_data: "product:edit" }, { text: "Отмена", callback_data: "product:cancel" }]
+    ]
+  };
+}
+
+function productDraftEditKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        { text: "Категория", callback_data: "product:field:category" },
+        { text: "Название", callback_data: "product:field:title" }
+      ],
+      [
+        { text: "Цена", callback_data: "product:field:price" },
+        { text: "Ед. изм.", callback_data: "product:field:unit" }
+      ],
+      [
+        { text: "Описание", callback_data: "product:field:description" },
+        { text: "Фото", callback_data: "product:field:photo" }
+      ],
+      [{ text: "Назад к проверке", callback_data: "product:confirm" }]
+    ]
+  };
+}
+
+async function publishDraftProduct(chatId, fromId) {
+  const key = stateKey(chatId, fromId);
+  const state = botState.get(key);
+  if (state?.flow !== "product" || state.step !== "confirm") {
+    return sendMessage(chatId, "Черновик товара не найден. Нажмите 'Добавить товар' заново.", adminKeyboard());
+  }
+
+  const product = normalizeProductForSave(state.product);
+  const products = await readJson(PRODUCTS_FILE, []);
+  const index = products.findIndex((item) => item.id === product.id);
+  if (index >= 0) products[index] = product;
+  else products.unshift(product);
+  await writeJson(PRODUCTS_FILE, products);
+
+  const savedProducts = await readJson(PRODUCTS_FILE, []);
+  const isVisible = savedProducts.some((item) => item.id === product.id && item.active !== false);
+  botState.delete(key);
+
+  return sendAdminPanel(
+    chatId,
+    isVisible
+      ? `Товар опубликован на сайте.\nID: ${product.id}\n${PUBLIC_BASE_URL}/catalog`
+      : "Товар сохранен, но не прошел проверку видимости."
+  );
+}
+
+function normalizeProductForSave(product) {
+  return {
+    id: product.id || newProductId(),
+    title: trimText(product.title, 160),
+    category: trimText(product.category, 80),
+    price: Math.max(0, Math.round(Number(product.price || 0))),
+    unit: normalizeUnit(product.unit),
+    stock: trimText(product.stock, 80) || "в наличии",
+    description: trimText(product.description, 800),
+    image: trimText(product.image, 240),
+    imageFit: product.image ? "cover" : "contain",
+    active: true,
+    featured: false,
+    createdAt: product.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function newProductId() {
+  return `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function normalizeUnit(value) {
+  return trimText(value, 30) || "шт";
 }
 
 async function sendProducts(chatId) {
   const products = await readJson(PRODUCTS_FILE, []);
   const visible = products.filter((product) => product.active !== false).slice(0, 20);
   if (!visible.length) {
-    return sendMessage(chatId, "Каталог пуст. Нажмите '➕ Добавить товар', чтобы загрузить первый товар.", mainKeyboard());
+    return sendMessage(chatId, "Каталог пуст. Нажмите 'Добавить товар', чтобы загрузить первый товар.", adminKeyboard());
   }
 
   const lines = visible.map((product) => {
@@ -589,29 +805,52 @@ async function sendProducts(chatId) {
       `Наличие: ${product.stock || "не указано"}`
     ].join("\n");
   });
-  return sendMessage(chatId, lines.join("\n\n"), mainKeyboard());
+  return sendMessage(chatId, lines.join("\n\n"), adminKeyboard());
 }
 
-async function sendOrders(chatId) {
+async function sendOrders(chatId, options = {}) {
   const orders = await readJson(ORDERS_FILE, []);
-  if (!orders.length) return sendMessage(chatId, "Заказов пока нет.", mainKeyboard());
+  if (!orders.length) return sendMessage(chatId, "Заказов пока нет.", options.withKeyboard ? adminKeyboard() : undefined);
 
-  for (const order of orders.slice(0, 5)) {
-    await sendMessage(chatId, formatOrder(order), orderKeyboard(order));
+  for (const order of orders.slice(0, 8)) {
+    await sendMessage(chatId, formatOrder(order), options.withKeyboard ? orderKeyboard(order) : undefined);
   }
 }
 
-async function sendSummary(chatId) {
+async function sendWeeklySummary(chatId) {
   const products = await readJson(PRODUCTS_FILE, []);
   const orders = await readJson(ORDERS_FILE, []);
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const weekOrders = orders.filter((order) => Date.parse(order.createdAt || "") >= weekAgo);
   const activeProducts = products.filter((product) => product.active !== false).length;
-  const byStatus = STATUSES.map((status) => `${STATUS_LABELS[status]}: ${orders.filter((order) => order.status === status).length}`);
-  const total = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+  const byStatus = STATUSES.map((status) => `${STATUS_LABELS[status]}: ${weekOrders.filter((order) => order.status === status).length}`);
+  const total = weekOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+  const topItems = topProductsFromOrders(weekOrders);
   return sendMessage(
     chatId,
-    [`Товаров на сайте: ${activeProducts}`, `Заказов всего: ${orders.length}`, `Сумма корзин: ${formatMoney(total)}`, ...byStatus].join("\n"),
-    mainKeyboard()
+    [
+      "Сводка за 7 дней",
+      `Товаров на сайте: ${activeProducts}`,
+      `Новых заказов: ${weekOrders.length}`,
+      `Сумма корзин: ${formatMoney(total)}`,
+      ...byStatus,
+      topItems.length ? `Популярные позиции:\n${topItems.map((item) => `- ${item.title}: ${formatQty(item.qty)} ${item.unit}`).join("\n")}` : ""
+    ].filter(Boolean).join("\n"),
+    adminKeyboard()
   );
+}
+
+function topProductsFromOrders(orders) {
+  const items = new Map();
+  for (const order of orders) {
+    for (const item of order.items || []) {
+      const key = item.productId || item.title;
+      const current = items.get(key) || { title: item.title, qty: 0, unit: item.unit || "шт" };
+      current.qty += Number(item.qty || 0);
+      items.set(key, current);
+    }
+  }
+  return [...items.values()].sort((a, b) => b.qty - a.qty).slice(0, 5);
 }
 
 async function updateProductPrice(chatId, command) {
@@ -649,31 +888,214 @@ async function mutateProduct(chatId, id, updater) {
   const product = products.find((item) => item.id === id);
   if (!product) return sendMessage(chatId, "Товар с таким ID не найден.");
   const message = updater(product);
+  product.updatedAt = new Date().toISOString();
   await writeJson(PRODUCTS_FILE, products);
-  return sendMessage(chatId, message, mainKeyboard());
+  return sendMessage(chatId, message, adminKeyboard());
 }
 
 async function handleCallback(query) {
   const fromId = String(query.from?.id || "");
-  if (!TELEGRAM_ADMINS.has(fromId)) return;
-  const [type, orderId, status] = String(query.data || "").split(":");
+  const chatId = String(query.message?.chat?.id || query.from?.id || "");
+  const data = String(query.data || "");
+  await tgApi("answerCallbackQuery", { callback_query_id: query.id }).catch(() => {});
+
+  if (data === "entry:admin") return startAdminLogin(chatId, fromId);
+  if (data === "entry:watch") return subscribeWatcher(chatId, fromId, query.message?.chat || {});
+
+  if (data.startsWith("product:")) return handleProductCallback(chatId, fromId, data);
+  if (data.startsWith("editproduct:")) return handleEditProductCallback(chatId, fromId, data);
+
+  const [type, orderId, status] = data.split(":");
   if (type !== "order" || !STATUSES.includes(status)) return;
+  if (!isAdminSession(fromId)) {
+    return sendMessage(chatId, "Сначала войдите в админ-панель через /admin.");
+  }
 
   const orders = await readJson(ORDERS_FILE, []);
   const order = orders.find((item) => item.id === orderId);
-  if (!order) return tgApi("answerCallbackQuery", { callback_query_id: query.id, text: "Заказ не найден" });
+  if (!order) return sendMessage(chatId, "Заказ не найден.");
 
   order.status = status;
   order.timeline = order.timeline || [];
   order.timeline.unshift({ status, at: new Date().toISOString() });
   await writeJson(ORDERS_FILE, orders);
 
-  await tgApi("answerCallbackQuery", {
-    callback_query_id: query.id,
-    text: `Статус: ${STATUS_LABELS[status]}`
-  });
-
   await sendMessage(String(query.message.chat.id), formatOrder(order), orderKeyboard(order));
+}
+
+async function handleProductCallback(chatId, fromId, data) {
+  if (!isAdminSession(fromId)) return sendMessage(chatId, "Сначала войдите в админ-панель через /admin.");
+  const key = stateKey(chatId, fromId);
+  const state = botState.get(key);
+
+  if (data === "product:publish") return publishDraftProduct(chatId, fromId);
+  if (data === "product:cancel") {
+    botState.delete(key);
+    return sendAdminPanel(chatId, "Публикация товара отменена.");
+  }
+  if (data === "product:confirm") {
+    if (state?.flow !== "product") return sendAdminPanel(chatId, "Черновик товара не найден.");
+    state.step = "confirm";
+    return sendProductDraft(chatId, state.product);
+  }
+  if (data === "product:edit") {
+    if (state?.flow !== "product") return sendAdminPanel(chatId, "Черновик товара не найден.");
+    return sendMessage(chatId, "Что изменить?", productDraftEditKeyboard());
+  }
+  if (data.startsWith("product:field:")) {
+    if (state?.flow !== "product") return sendAdminPanel(chatId, "Черновик товара не найден.");
+    const field = data.split(":")[2];
+    state.step = field;
+    state.editing = true;
+    return askProductField(chatId, field);
+  }
+}
+
+function askProductField(chatId, field) {
+  const prompts = {
+    category: "Новая категория?",
+    title: "Новое название?",
+    price: "Новая цена в сомах?",
+    unit: "Новая единица измерения? Например: м², шт, пог. м.",
+    description: "Новое описание или 'Пропустить'.",
+    photo: "Отправьте новое фото или напишите 'Пропустить'."
+  };
+  return sendMessage(chatId, prompts[field] || "Введите новое значение.", cancelKeyboard());
+}
+
+async function startEditProductFlow(chatId, fromId) {
+  botState.set(stateKey(chatId, fromId), { flow: "edit_product", step: "find" });
+  const products = await readJson(PRODUCTS_FILE, []);
+  const visible = products.filter((product) => product.active !== false).slice(0, 8);
+  const keyboard = visible.length
+    ? {
+        inline_keyboard: visible.map((product) => [
+          { text: `${product.title}`.slice(0, 50), callback_data: `editproduct:select:${product.id}` }
+        ])
+      }
+    : cancelKeyboard();
+  return sendMessage(chatId, "Выберите товар из списка или напишите его ID/часть названия.", keyboard);
+}
+
+async function continueFindProductFlow(chatId, fromId, textValue) {
+  const products = await readJson(PRODUCTS_FILE, []);
+  const query = textValue.toLowerCase();
+  const matches = products
+    .filter((product) => product.id === textValue || String(product.title || "").toLowerCase().includes(query))
+    .slice(0, 8);
+
+  if (!matches.length) return sendMessage(chatId, "Товар не найден. Напишите точный ID или часть названия.", cancelKeyboard());
+  if (matches.length === 1) return openProductEditor(chatId, fromId, matches[0].id);
+
+  return sendMessage(chatId, "Нашел несколько товаров. Выберите нужный:", {
+    inline_keyboard: matches.map((product) => [
+      { text: `${product.title}`.slice(0, 50), callback_data: `editproduct:select:${product.id}` }
+    ])
+  });
+}
+
+async function handleEditProductCallback(chatId, fromId, data) {
+  if (!isAdminSession(fromId)) return sendMessage(chatId, "Сначала войдите в админ-панель через /admin.");
+  const [, action, productId, field] = data.split(":");
+  if (action === "select") return openProductEditor(chatId, fromId, productId);
+  if (action === "field") return startProductFieldEdit(chatId, fromId, productId, field);
+  if (action === "toggle") return toggleProductVisibility(chatId, fromId, productId);
+  if (action === "done") {
+    botState.delete(stateKey(chatId, fromId));
+    return sendAdminPanel(chatId, "Редактирование завершено.");
+  }
+}
+
+async function openProductEditor(chatId, fromId, productId) {
+  botState.set(stateKey(chatId, fromId), { flow: "edit_product", step: "selected", productId });
+  const products = await readJson(PRODUCTS_FILE, []);
+  const product = products.find((item) => item.id === productId);
+  if (!product) return sendMessage(chatId, "Товар не найден.", adminKeyboard());
+  return sendMessage(chatId, formatProduct(product), productEditKeyboard(product));
+}
+
+function productEditKeyboard(product) {
+  const visibleText = product.active === false ? "Показать" : "Скрыть";
+  return {
+    inline_keyboard: [
+      [
+        { text: "Название", callback_data: `editproduct:field:${product.id}:title` },
+        { text: "Цена", callback_data: `editproduct:field:${product.id}:price` }
+      ],
+      [
+        { text: "Категория", callback_data: `editproduct:field:${product.id}:category` },
+        { text: "Ед. изм.", callback_data: `editproduct:field:${product.id}:unit` }
+      ],
+      [
+        { text: "Описание", callback_data: `editproduct:field:${product.id}:description` },
+        { text: "Фото", callback_data: `editproduct:field:${product.id}:photo` }
+      ],
+      [{ text: visibleText, callback_data: `editproduct:toggle:${product.id}` }],
+      [{ text: "Готово", callback_data: `editproduct:done:${product.id}` }]
+    ]
+  };
+}
+
+async function startProductFieldEdit(chatId, fromId, productId, field) {
+  botState.set(stateKey(chatId, fromId), { flow: "edit_field", productId, field });
+  return askProductField(chatId, field);
+}
+
+async function continueEditFieldFlow(chatId, fromId, message, textValue, state) {
+  const products = await readJson(PRODUCTS_FILE, []);
+  const product = products.find((item) => item.id === state.productId);
+  if (!product) {
+    botState.delete(stateKey(chatId, fromId));
+    return sendMessage(chatId, "Товар не найден.", adminKeyboard());
+  }
+
+  if (state.field === "photo") {
+    if (message.photo && message.photo.length) {
+      product.image = await saveTelegramPhoto(message.photo, product.id);
+      product.imageFit = "cover";
+    } else if (!/^пропустить$/i.test(textValue)) {
+      return sendMessage(chatId, "Отправьте фото или напишите 'Пропустить'.", cancelKeyboard());
+    }
+  } else if (state.field === "price") {
+    const price = Number(textValue.replace(",", "."));
+    if (!Number.isFinite(price) || price < 0) return sendMessage(chatId, "Нужна цена числом.", cancelKeyboard());
+    product.price = Math.round(price);
+  } else if (state.field === "unit") {
+    product.unit = normalizeUnit(textValue);
+  } else if (state.field === "description") {
+    product.description = /^пропустить$/i.test(textValue) ? "" : trimText(textValue, 800);
+  } else if (state.field === "category") {
+    product.category = trimText(textValue, 80);
+  } else if (state.field === "title") {
+    product.title = trimText(textValue, 160);
+  }
+
+  product.updatedAt = new Date().toISOString();
+  await writeJson(PRODUCTS_FILE, products);
+  return openProductEditor(chatId, fromId, product.id);
+}
+
+async function toggleProductVisibility(chatId, fromId, productId) {
+  const products = await readJson(PRODUCTS_FILE, []);
+  const product = products.find((item) => item.id === productId);
+  if (!product) return sendMessage(chatId, "Товар не найден.", adminKeyboard());
+  product.active = product.active === false;
+  product.updatedAt = new Date().toISOString();
+  await writeJson(PRODUCTS_FILE, products);
+  return openProductEditor(chatId, fromId, product.id);
+}
+
+function formatProduct(product) {
+  return [
+    `ID: ${product.id || "новый"}`,
+    `Название: ${product.title || "не указано"}`,
+    `Категория: ${product.category || "не указана"}`,
+    `Цена: ${formatMoney(product.price)} / ${product.unit || "шт"}`,
+    `Наличие: ${product.stock || "в наличии"}`,
+    `Описание: ${product.description || "без описания"}`,
+    `Фото: ${product.image ? "загружено" : "нет"}`,
+    `На сайте: ${product.active === false ? "нет" : "да"}`
+  ].join("\n");
 }
 
 async function saveTelegramPhoto(photos, id) {
@@ -727,15 +1149,66 @@ function orderKeyboard(order) {
   };
 }
 
-async function sendMenu(chatId, prefix = "Админ-панель Линии Роста") {
-  return sendMessage(chatId, `${prefix}\n\nКоманды: /products, /orders, /summary, /addproduct`, mainKeyboard());
+async function subscribeWatcher(chatId, fromId, chat = {}) {
+  if (!canRegisterWatcher(fromId)) {
+    return sendMessage(chatId, "Наблюдение доступно только менеджерам Линии Роста. Для доступа войдите в админ-панель.");
+  }
+
+  const watchers = await readJson(WATCHERS_FILE, []);
+  const existing = watchers.find((watcher) => watcher.chatId === chatId);
+  const item = {
+    chatId,
+    title: chat.title || chat.username || `chat ${chatId}`,
+    createdBy: fromId,
+    updatedAt: new Date().toISOString()
+  };
+
+  if (existing) Object.assign(existing, item);
+  else watchers.unshift({ ...item, createdAt: new Date().toISOString() });
+
+  await writeJson(WATCHERS_FILE, watchers);
+  return sendMessage(chatId, "Наблюдение включено. В этот чат будут приходить новые заказы с сайта.\n\nЧтобы отключить: /watch_off");
 }
 
-function mainKeyboard() {
+async function unsubscribeWatcher(chatId) {
+  const watchers = await readJson(WATCHERS_FILE, []);
+  const nextWatchers = watchers.filter((watcher) => watcher.chatId !== chatId);
+  await writeJson(WATCHERS_FILE, nextWatchers);
+  return sendStartMenu(chatId, "Наблюдение отключено.");
+}
+
+async function notifyOrderWatchers(order) {
+  if (!ENABLE_TELEGRAM_BOT || !TELEGRAM_BOT_TOKEN) return;
+  const chatIds = await getNotificationChatIds();
+  const message = `Новый заказ с сайта\n\n${formatOrder(order)}`;
+  for (const chatId of chatIds) {
+    await sendMessage(chatId, message);
+  }
+}
+
+async function getNotificationChatIds() {
+  const watchers = await readJson(WATCHERS_FILE, []);
+  const chatIds = new Set([...TELEGRAM_ADMINS]);
+  for (const watcher of watchers) {
+    if (watcher.chatId) chatIds.add(String(watcher.chatId));
+  }
+  return [...chatIds];
+}
+
+async function sendAdminPanel(chatId, prefix = "Админ-панель Линии Роста") {
+  return sendMessage(
+    chatId,
+    `${prefix}\n\nДоступно: добавить товар, изменить товар, последние заказы и сводка за неделю.`,
+    adminKeyboard()
+  );
+}
+
+function adminKeyboard() {
   return {
     keyboard: [
-      [{ text: "➕ Добавить товар" }, { text: "📦 Товары" }],
-      [{ text: "🧾 Заказы" }, { text: "📊 Сводка" }]
+      [{ text: "➕ Добавить товар" }, { text: "✏️ Изменить товар" }],
+      [{ text: "🧾 Последние заказы" }, { text: "📊 Сводка за неделю" }],
+      [{ text: "📦 Товары" }, { text: "🚪 Выйти" }]
     ],
     resize_keyboard: true
   };
@@ -754,13 +1227,6 @@ async function sendMessage(chatId, textValue, replyMarkup) {
     text: textValue.slice(0, 4000),
     reply_markup: replyMarkup
   });
-}
-
-async function notifyAdmins(textValue, replyMarkup) {
-  if (!ENABLE_TELEGRAM_BOT || !TELEGRAM_BOT_TOKEN || !TELEGRAM_ADMINS.size) return;
-  for (const adminId of TELEGRAM_ADMINS) {
-    await sendMessage(adminId, textValue, replyMarkup);
-  }
 }
 
 async function tgApi(method, body) {

@@ -27,6 +27,14 @@ services:
         value: webhook
       - key: TELEGRAM_ADMIN_IDS
         value: "8906052538"
+      - key: TELEGRAM_OBSERVER_IDS
+        value: "8906052538"
+      - key: TELEGRAM_ADMIN_LOGIN
+        value: LiniyaRosta
+      - key: TELEGRAM_ADMIN_PASSWORD
+        sync: false
+      - key: TELEGRAM_ADMIN_SESSION_HOURS
+        value: "12"
       - key: TELEGRAM_WEBHOOK_SECRET
         generateValue: true
       - key: TELEGRAM_BOT_TOKEN
