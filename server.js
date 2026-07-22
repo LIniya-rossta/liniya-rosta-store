@@ -100,6 +100,7 @@ const STATUS_LABELS = {
   delivered: "Доставлен",
   canceled: "Отменен"
 };
+const MESSAGE_SEPARATOR = "------------------------------";
 
 const botState = new Map();
 const adminSessions = new Map();
@@ -1185,23 +1186,50 @@ function formatOrder(order) {
   const method = order.fulfillment?.method === "pickup" ? "Самовывоз" : "Доставка";
   const payment = order.fulfillment?.payment === "online" ? "Онлайн-оплата" : "После связи менеджера";
   const readyText = formatReadyWindow(order.fulfillment);
-  const lines = [
-    `Заказ ${order.id}`,
-    `Статус: ${STATUS_LABELS[order.status] || order.status}`,
-    `Тип: ${order.type === "measurement" ? "Онлайн-замер" : "Корзина"}`,
-    `Клиент: ${order.customer.name}`,
-    `Телефон: ${order.customer.phone}`,
-    order.customer.address ? `Адрес: ${order.customer.address}` : "",
-    order.area ? `Площадь: ${order.area} м²` : "",
-    `Получение: ${method}`,
-    readyText ? `Готовность: ${readyText}` : "",
-    `Оплата: ${payment}`,
-    order.items.length ? `Товары:\n${order.items.map((item) => `- ${item.title} x ${formatQty(item.qty)} ${item.unit} = ${formatMoney(item.price * item.qty)}`).join("\n")}` : "",
-    order.total ? `Итого: ${formatMoney(order.total)}` : "",
-    order.comment ? `Комментарий: ${order.comment}` : "",
-    `Создан: ${formatKyrgyzDateTime(order.createdAt)} Кыргызстан`
+  const customer = order.customer || {};
+  const items = Array.isArray(order.items) ? order.items : [];
+  const sections = [
+    [
+      `Заказ: ${order.id}`,
+      `Статус: ${STATUS_LABELS[order.status] || order.status}`,
+      `Тип: ${order.type === "measurement" ? "Онлайн-замер" : "Корзина"}`
+    ],
+    [
+      "Клиент",
+      `Имя: ${customer.name || "не указано"}`,
+      `Телефон: ${customer.phone || "не указан"}`,
+      customer.address ? `Адрес: ${customer.address}` : ""
+    ],
+    [
+      "Получение",
+      `Способ: ${method}`,
+      readyText ? `Готовность: ${readyText}` : "",
+      order.area ? `Площадь: ${formatQty(order.area)} м²` : "",
+      `Оплата: ${payment}`
+    ],
+    items.length
+      ? [
+          "Товары",
+          ...items.map(formatOrderItem),
+          order.total ? `Итого: ${formatMoney(order.total)}` : "Итого: по запросу"
+        ]
+      : [],
+    order.comment ? ["Комментарий", order.comment] : [],
+    [`Создан: ${formatKyrgyzDateTime(order.createdAt)} Кыргызстан`]
   ];
-  return lines.filter(Boolean).join("\n");
+
+  return sections
+    .map((section) => section.filter(Boolean))
+    .filter((section) => section.length)
+    .map((section) => section.join("\n"))
+    .join(`\n${MESSAGE_SEPARATOR}\n`);
+}
+
+function formatOrderItem(item, index) {
+  const qty = `${formatQty(item.qty)} ${item.unit || "шт"}`;
+  const price = Number(item.price || 0);
+  const sum = price > 0 ? formatMoney(price * Number(item.qty || 0)) : "по запросу";
+  return `${index + 1}. ${item.title}\n   Кол-во: ${qty}\n   Сумма: ${sum}`;
 }
 
 function formatReadyWindow(fulfillment = {}) {
@@ -1269,7 +1297,7 @@ async function unsubscribeWatcher(chatId) {
 async function notifyOrderWatchers(order) {
   if (!ENABLE_TELEGRAM_BOT || !TELEGRAM_BOT_TOKEN) return;
   const chatIds = await getNotificationChatIds();
-  const message = `Новый заказ с сайта\n\n${formatOrder(order)}`;
+  const message = `Новый заказ с сайта\n${MESSAGE_SEPARATOR}\n${formatOrder(order)}`;
   for (const chatId of chatIds) {
     await sendMessage(chatId, message);
   }
