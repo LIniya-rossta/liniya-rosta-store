@@ -80,6 +80,8 @@ TELEGRAM_WEBHOOK_SECRET=случайная_длинная_строка
 /api/telegram/webhook/<TELEGRAM_WEBHOOK_SECRET>
 ```
 
+Если `TELEGRAM_WEBHOOK_SECRET` не задан, сервер сам создаст стабильный секрет из Telegram bot token. Но вручную заданный секрет все равно лучше для production.
+
 На локальном `localhost` Telegram webhook не заработает без публичного HTTPS-адреса, поэтому для разработки оставлен `TELEGRAM_BOT_MODE=polling`.
 
 ## Каталог

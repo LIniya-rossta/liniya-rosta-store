@@ -1,4 +1,5 @@
 const http = require("http");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { URL } = require("url");
@@ -24,7 +25,7 @@ const TELEGRAM_ADMINS = new Set(
 );
 const ENABLE_TELEGRAM_BOT = process.env.ENABLE_TELEGRAM_BOT !== "false";
 const TELEGRAM_BOT_MODE = process.env.TELEGRAM_BOT_MODE || (PUBLIC_BASE_URL.startsWith("https://") ? "webhook" : "polling");
-const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || "";
+const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || deriveTelegramSecret(TELEGRAM_BOT_TOKEN);
 const TELEGRAM_DELETE_WEBHOOK_ON_POLLING = process.env.TELEGRAM_DELETE_WEBHOOK_ON_POLLING === "true";
 const TELEGRAM_ADMIN_LOGIN = process.env.TELEGRAM_ADMIN_LOGIN || "LiniyaRosta";
 const TELEGRAM_ADMIN_PASSWORD = process.env.TELEGRAM_ADMIN_PASSWORD || "";
@@ -147,6 +148,7 @@ const server = http.createServer(async (req, res) => {
         telegram: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMINS.size),
         telegramEnabled: ENABLE_TELEGRAM_BOT,
         telegramMode: TELEGRAM_BOT_MODE,
+        telegramWebhookSecret: Boolean(TELEGRAM_WEBHOOK_SECRET),
         telegramAdminPassword: Boolean(TELEGRAM_ADMIN_PASSWORD)
       });
     }
@@ -183,6 +185,11 @@ function loadEnv(file) {
     const value = trimmed.slice(index + 1).trim().replace(/^["']|["']$/g, "");
     if (!(key in process.env)) process.env[key] = value;
   }
+}
+
+function deriveTelegramSecret(token) {
+  if (!token) return "";
+  return `lr_${crypto.createHash("sha256").update(token).digest("hex").slice(0, 32)}`;
 }
 
 function ensureStorage() {
