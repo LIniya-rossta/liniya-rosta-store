@@ -275,8 +275,26 @@ function renderCheckout() {
             <label><input type="radio" name="method" value="pickup"> Самовывоз</label>
           </fieldset>
 
-          <label><span>Дата готовности</span><input name="readyDate" required type="date" min="${ready.today}" value="${ready.date}"></label>
-          <label><span>Время, Кыргызстан</span><input name="readyTime" required type="time" value="${ready.time}"></label>
+          <div class="ready-field ready-date-field">
+            <span>Дата готовности</span>
+            <button class="ready-trigger" type="button" id="readyDateButton" aria-expanded="false" aria-controls="readyCalendar">
+              <strong id="readyDateLabel">${escapeHtml(formatReadyDateLabel(ready.date))}</strong>
+              <i aria-hidden="true"></i>
+            </button>
+            <input name="readyDate" type="hidden" value="${ready.date}" data-ready-date>
+            <div class="ready-calendar" id="readyCalendar" hidden>
+              ${calendarTemplate(ready.date, ready.date)}
+            </div>
+          </div>
+          <div class="ready-field ready-time-field">
+            <span>Время, Кыргызстан</span>
+            <div class="ready-time-control">
+              <button type="button" data-time-step="-15" aria-label="Уменьшить время">−</button>
+              <strong id="readyTimeLabel">${escapeHtml(ready.time)}</strong>
+              <button type="button" data-time-step="15" aria-label="Увеличить время">+</button>
+            </div>
+            <input name="readyTime" type="hidden" value="${ready.time}" data-ready-time>
+          </div>
 
           <label class="full"><span>Комментарий</span><textarea name="comment" rows="4" placeholder="Этаж, подъезд, удобное время, вопросы"></textarea></label>
           <button class="btn btn-primary full" type="submit" ${lines.length ? "" : "disabled"}>Оформить заказ</button>
@@ -293,6 +311,7 @@ function renderCheckout() {
   const form = document.getElementById("checkoutForm");
   bindPhoneInputs();
   bindFulfillmentControls();
+  bindReadyControls();
   form?.addEventListener("submit", submitCheckout);
 }
 
@@ -589,6 +608,72 @@ function bindFulfillmentControls() {
   updateAddressState();
 }
 
+function bindReadyControls() {
+  const form = document.getElementById("checkoutForm");
+  const dateInput = form?.querySelector("[data-ready-date]");
+  const timeInput = form?.querySelector("[data-ready-time]");
+  const dateButton = document.getElementById("readyDateButton");
+  const dateLabel = document.getElementById("readyDateLabel");
+  const calendar = document.getElementById("readyCalendar");
+  const timeLabel = document.getElementById("readyTimeLabel");
+  if (!form || !dateInput || !timeInput || !dateButton || !dateLabel || !calendar || !timeLabel) return;
+
+  let displayDate = parseDateValue(dateInput.value);
+  const closeCalendar = () => {
+    calendar.hidden = true;
+    dateButton.setAttribute("aria-expanded", "false");
+  };
+  const openCalendar = () => {
+    calendar.hidden = false;
+    dateButton.setAttribute("aria-expanded", "true");
+  };
+  const renderCalendar = () => {
+    calendar.innerHTML = calendarTemplate(dateInput.value, dateValueFromParts(displayDate.year, displayDate.monthIndex, 1));
+  };
+  const setSelectedDate = (value) => {
+    dateInput.value = value;
+    dateLabel.textContent = formatReadyDateLabel(value);
+    displayDate = parseDateValue(value);
+    renderCalendar();
+    closeCalendar();
+  };
+  const setSelectedTime = (value) => {
+    timeInput.value = value;
+    timeLabel.textContent = value;
+  };
+
+  dateButton.addEventListener("click", () => {
+    if (calendar.hidden) openCalendar();
+    else closeCalendar();
+  });
+
+  calendar.addEventListener("click", (event) => {
+    const nav = event.target.closest("[data-calendar-nav]");
+    const date = event.target.closest("[data-calendar-date]");
+    if (nav) {
+      displayDate = addCalendarMonths(displayDate, Number(nav.dataset.calendarNav));
+      renderCalendar();
+      return;
+    }
+    if (date && !date.disabled) setSelectedDate(date.dataset.calendarDate);
+  });
+
+  form.querySelectorAll("[data-time-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const next = minutesToTime(timeToMinutes(timeInput.value) + Number(button.dataset.timeStep));
+      setSelectedTime(next);
+    });
+  });
+
+  document.addEventListener("click", (event) => {
+    if (calendar.hidden) return;
+    if (!event.target.closest(".ready-date-field")) closeCalendar();
+  });
+
+  renderCalendar();
+  setSelectedTime(timeInput.value);
+}
+
 async function submitCheckout(event) {
   event.preventDefault();
   const lines = getCartLines();
@@ -866,8 +951,9 @@ function formatMoney(value) {
 }
 
 function kyrgyzInputDateTime(offsetMinutes = 0) {
+  const roundedTimestamp = Math.ceil((Date.now() + offsetMinutes * 60 * 1000) / (15 * 60 * 1000)) * 15 * 60 * 1000;
   const now = getKyrgyzParts(new Date());
-  const target = getKyrgyzParts(new Date(Date.now() + offsetMinutes * 60 * 1000));
+  const target = getKyrgyzParts(new Date(roundedTimestamp));
   return {
     today: `${now.year}-${now.month}-${now.day}`,
     date: `${target.year}-${target.month}-${target.day}`,
@@ -894,6 +980,98 @@ function getKyrgyzParts(date) {
     hour: values.hour === "24" ? "00" : values.hour,
     minute: values.minute
   };
+}
+
+function calendarTemplate(selectedDate, monthValue) {
+  const selected = parseDateValue(selectedDate);
+  const month = parseDateValue(monthValue);
+  const today = kyrgyzInputDateTime().today;
+  const firstDay = new Date(month.year, month.monthIndex, 1);
+  const firstWeekday = (firstDay.getDay() + 6) % 7;
+  const start = new Date(month.year, month.monthIndex, 1 - firstWeekday);
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index);
+    const value = dateValueFromParts(date.getFullYear(), date.getMonth(), date.getDate());
+    const isCurrentMonth = date.getMonth() === month.monthIndex;
+    const isSelected = value === selectedDate;
+    const isToday = value === today;
+    const isDisabled = value < today;
+    return `
+      <button
+        type="button"
+        class="${isCurrentMonth ? "" : "is-muted"} ${isSelected ? "is-selected" : ""} ${isToday ? "is-today" : ""}"
+        data-calendar-date="${value}"
+        ${isDisabled ? "disabled" : ""}
+      >${date.getDate()}</button>
+    `;
+  }).join("");
+
+  return `
+    <div class="ready-calendar-head">
+      <button type="button" data-calendar-nav="-1" aria-label="Предыдущий месяц">‹</button>
+      <strong>${escapeHtml(calendarMonthTitle(month))}</strong>
+      <button type="button" data-calendar-nav="1" aria-label="Следующий месяц">›</button>
+    </div>
+    <div class="ready-calendar-week">
+      ${["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => `<span>${day}</span>`).join("")}
+    </div>
+    <div class="ready-calendar-days">${days}</div>
+  `;
+}
+
+function parseDateValue(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!match) {
+    const today = kyrgyzInputDateTime().today;
+    return parseDateValue(today);
+  }
+  return {
+    year: Number(match[1]),
+    monthIndex: Number(match[2]) - 1,
+    day: Number(match[3])
+  };
+}
+
+function addCalendarMonths(value, amount) {
+  const date = new Date(value.year, value.monthIndex + amount, 1);
+  return {
+    year: date.getFullYear(),
+    monthIndex: date.getMonth(),
+    day: 1
+  };
+}
+
+function dateValueFromParts(year, monthIndex, day) {
+  return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function calendarMonthTitle(value) {
+  const label = new Intl.DateTimeFormat("ru-RU", {
+    month: "long",
+    year: "numeric"
+  }).format(new Date(value.year, value.monthIndex, 1));
+  return label[0].toUpperCase() + label.slice(1);
+}
+
+function formatReadyDateLabel(value) {
+  const date = parseDateValue(value);
+  return new Intl.DateTimeFormat("ru-RU", {
+    weekday: "short",
+    day: "numeric",
+    month: "long"
+  }).format(new Date(date.year, date.monthIndex, date.day)).replace(",", "");
+}
+
+function timeToMinutes(value) {
+  const match = /^(\d{2}):(\d{2})$/.exec(String(value || ""));
+  if (!match) return 9 * 60;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function minutesToTime(value) {
+  const day = 24 * 60;
+  const minutes = ((Math.round(value / 15) * 15) % day + day) % day;
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 
 function initials(value) {

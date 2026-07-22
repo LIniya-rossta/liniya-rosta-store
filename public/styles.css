@@ -686,6 +686,175 @@ textarea:focus {
   box-shadow: 0 0 0 4px rgba(94, 231, 255, 0.16);
 }
 
+.ready-field {
+  position: relative;
+  display: grid;
+  gap: 8px;
+}
+
+.ready-trigger,
+.ready-time-control {
+  min-height: 64px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 12px 16px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.42)),
+    var(--paper-2);
+  color: var(--ink);
+  box-shadow: var(--inner-glass), 0 18px 45px rgba(18, 31, 44, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.ready-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.ready-trigger strong,
+.ready-time-control strong {
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.ready-trigger i {
+  width: 22px;
+  height: 22px;
+  border: 2px solid currentColor;
+  border-radius: 7px;
+  opacity: 0.78;
+  position: relative;
+}
+
+.ready-trigger i::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 5px;
+  border-top: 2px solid currentColor;
+}
+
+.ready-calendar {
+  position: absolute;
+  z-index: 35;
+  top: calc(100% + 10px);
+  left: 0;
+  width: min(360px, 92vw);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 26px;
+  padding: 16px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(237, 244, 249, 0.76)),
+    var(--paper-solid);
+  box-shadow: 0 28px 85px rgba(5, 13, 22, 0.22);
+  backdrop-filter: blur(24px);
+}
+
+.ready-calendar-head {
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.ready-calendar-head strong {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 950;
+  text-align: center;
+}
+
+.ready-calendar-head button,
+.ready-calendar-days button,
+.ready-time-control button {
+  border: 0;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: var(--inner-glass);
+}
+
+.ready-calendar-head button {
+  aspect-ratio: 1;
+  border-radius: 14px;
+  font-size: 24px;
+}
+
+.ready-calendar-week,
+.ready-calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ready-calendar-week {
+  margin-bottom: 8px;
+}
+
+.ready-calendar-week span {
+  color: var(--steel);
+  font-size: 11px;
+  font-weight: 950;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.ready-calendar-days button {
+  min-width: 0;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  font-weight: 950;
+  transition: transform 180ms ease, background 180ms ease, color 180ms ease, opacity 180ms ease;
+}
+
+.ready-calendar-days button:not(:disabled):hover,
+.ready-calendar-head button:hover,
+.ready-time-control button:hover {
+  transform: translateY(-1px);
+  background: rgba(99, 230, 255, 0.18);
+}
+
+.ready-calendar-days button.is-muted {
+  opacity: 0.38;
+}
+
+.ready-calendar-days button.is-today {
+  outline: 2px solid rgba(99, 230, 255, 0.28);
+}
+
+.ready-calendar-days button.is-selected {
+  color: #07111a;
+  background: linear-gradient(135deg, var(--gold-2), var(--gold));
+  opacity: 1;
+}
+
+.ready-calendar-days button:disabled {
+  opacity: 0.2;
+}
+
+.ready-time-control {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  gap: 10px;
+}
+
+.ready-time-control strong {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ready-time-control button {
+  aspect-ratio: 1;
+  border-radius: 14px;
+  font-size: 22px;
+  font-weight: 950;
+}
+
 .category-row {
   display: flex;
   flex-wrap: wrap;
@@ -1546,11 +1715,27 @@ textarea:focus {
   .category-row button,
   input,
   textarea,
+  .ready-trigger,
+  .ready-time-control,
+  .ready-calendar-head button,
+  .ready-calendar-days button,
+  .ready-time-control button,
   .checkout-form fieldset,
   .qty-control button {
     border-color: rgba(255, 255, 255, 0.13);
     background: rgba(255, 255, 255, 0.08);
     color: var(--ink);
+  }
+
+  .ready-calendar {
+    border-color: rgba(255, 255, 255, 0.14);
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.045)),
+      rgba(14, 24, 34, 0.94);
+  }
+
+  .ready-calendar-days button.is-selected {
+    color: #09121c;
   }
 
   .product-image img {
