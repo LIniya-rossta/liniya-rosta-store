@@ -836,6 +836,11 @@ textarea:focus {
   opacity: 0.2;
 }
 
+.ready-calendar-days button.is-closed-day {
+  text-decoration: line-through;
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .ready-time-control {
   display: grid;
   grid-template-columns: 44px 1fr 44px;

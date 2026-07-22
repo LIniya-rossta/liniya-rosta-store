@@ -350,6 +350,9 @@ function cleanReadyWindow(fulfillment) {
 
   const readyAt = parseKyrgyzDateTime(readyDate, readyTime);
   if (!readyAt) throw publicError(400, "Некорректная дата или время готовности");
+  if (isSundayDateValue(readyDate)) {
+    throw publicError(400, "В воскресенье магазин не работает. Выберите другую дату");
+  }
   if (readyAt.getTime() < Date.now() - 10 * 60 * 1000) {
     throw publicError(400, "Выберите будущее время готовности заказа");
   }
@@ -379,6 +382,15 @@ function parseKyrgyzDateTime(dateValue, timeValue) {
   }
 
   return new Date(Date.UTC(year, month - 1, day, hour - 6, minute));
+}
+
+function isSundayDateValue(dateValue) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateValue || ""));
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay() === 0;
 }
 
 function getCatalogProducts(products) {

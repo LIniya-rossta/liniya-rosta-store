@@ -685,6 +685,7 @@ async function submitCheckout(event) {
   const readyDate = form.get("readyDate");
   const readyTime = form.get("readyTime");
   if (!readyDate || !readyTime) return setNote(note, "Выберите дату и время готовности заказа.", true);
+  if (isSundayDate(readyDate)) return setNote(note, "В воскресенье магазин не работает. Выберите другую дату.", true);
 
   const payload = {
     type: "cart",
@@ -953,9 +954,10 @@ function formatMoney(value) {
 function kyrgyzInputDateTime(offsetMinutes = 0) {
   const now = getKyrgyzParts(new Date());
   const target = getKyrgyzParts(new Date(Date.now() + offsetMinutes * 60 * 1000));
+  const orderDate = nextWorkingDate(`${target.year}-${target.month}-${target.day}`);
   return {
     today: `${now.year}-${now.month}-${now.day}`,
-    date: `${target.year}-${target.month}-${target.day}`,
+    date: orderDate,
     time: `${target.hour}:${target.minute}`
   };
 }
@@ -994,12 +996,14 @@ function calendarTemplate(selectedDate, monthValue) {
     const isCurrentMonth = date.getMonth() === month.monthIndex;
     const isSelected = value === selectedDate;
     const isToday = value === today;
-    const isDisabled = value < today;
+    const isClosedDay = isSundayDate(date);
+    const isDisabled = value < today || isClosedDay;
     return `
       <button
         type="button"
-        class="${isCurrentMonth ? "" : "is-muted"} ${isSelected ? "is-selected" : ""} ${isToday ? "is-today" : ""}"
+        class="${isCurrentMonth ? "" : "is-muted"} ${isSelected ? "is-selected" : ""} ${isToday ? "is-today" : ""} ${isClosedDay ? "is-closed-day" : ""}"
         data-calendar-date="${value}"
+        ${isClosedDay ? 'title="В воскресенье магазин не работает"' : ""}
         ${isDisabled ? "disabled" : ""}
       >${date.getDate()}</button>
     `;
@@ -1042,6 +1046,23 @@ function addCalendarMonths(value, amount) {
 
 function dateValueFromParts(year, monthIndex, day) {
   return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function nextWorkingDate(value) {
+  const parsed = parseDateValue(value);
+  const date = new Date(parsed.year, parsed.monthIndex, parsed.day);
+  while (isSundayDate(date)) {
+    date.setDate(date.getDate() + 1);
+  }
+  return dateValueFromParts(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function isSundayDate(value) {
+  const date = value instanceof Date ? value : (() => {
+    const parsed = parseDateValue(value);
+    return new Date(parsed.year, parsed.monthIndex, parsed.day);
+  })();
+  return date.getDay() === 0;
 }
 
 function calendarMonthTitle(value) {
