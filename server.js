@@ -25,6 +25,7 @@ const TELEGRAM_ADMINS = new Set(
 const ENABLE_TELEGRAM_BOT = process.env.ENABLE_TELEGRAM_BOT !== "false";
 const TELEGRAM_BOT_MODE = process.env.TELEGRAM_BOT_MODE || (PUBLIC_BASE_URL.startsWith("https://") ? "webhook" : "polling");
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || "";
+const TELEGRAM_DELETE_WEBHOOK_ON_POLLING = process.env.TELEGRAM_DELETE_WEBHOOK_ON_POLLING === "true";
 const TELEGRAM_ADMIN_LOGIN = process.env.TELEGRAM_ADMIN_LOGIN || "LiniyaRosta";
 const TELEGRAM_ADMIN_PASSWORD = process.env.TELEGRAM_ADMIN_PASSWORD || "";
 const TELEGRAM_OBSERVERS = new Set(
@@ -142,6 +143,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/health") {
       return json(res, 200, {
         ok: true,
+        telegramPanel: "admin-v2",
         telegram: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMINS.size),
         telegramEnabled: ENABLE_TELEGRAM_BOT,
         telegramMode: TELEGRAM_BOT_MODE,
@@ -435,6 +437,10 @@ async function startTelegramIntegration() {
   await setTelegramCommands();
   if (TELEGRAM_BOT_MODE === "webhook") {
     await setupTelegramWebhook();
+    return;
+  }
+  if (!TELEGRAM_DELETE_WEBHOOK_ON_POLLING) {
+    console.log("Telegram polling is off to keep the production webhook untouched.");
     return;
   }
   await tgApi("deleteWebhook", { drop_pending_updates: false });

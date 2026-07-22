@@ -1,5 +1,6 @@
 .env
 data/orders.json
+data/telegram-watchers.json
 storage/
 public/uploads/*
 !public/uploads/.gitkeep

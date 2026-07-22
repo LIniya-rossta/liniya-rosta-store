@@ -20,7 +20,10 @@ npm start
 ```env
 PUBLIC_BASE_URL=http://localhost:4177
 TELEGRAM_BOT_MODE=polling
+TELEGRAM_DELETE_WEBHOOK_ON_POLLING=false
 ```
+
+Если используется тот же токен, что и на Render, локальный polling не должен удалять production webhook. Для настоящего локального polling лучше создать отдельного тестового бота.
 
 ## Страницы
 
