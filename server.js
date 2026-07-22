@@ -588,10 +588,8 @@ async function sendStartMenu(chatId, prefix = "Линия Роста") {
 
 function startKeyboard() {
   return {
-    inline_keyboard: [
-      [{ text: "Войти в админ-панель", callback_data: "entry:admin" }],
-      [{ text: "Наблюдать за заказами", callback_data: "entry:watch" }]
-    ]
+    keyboard: [[{ text: "Войти в админ-панель" }, { text: "Наблюдать за заказами" }]],
+    resize_keyboard: true
   };
 }
 
