@@ -818,7 +818,7 @@ function holeTypeLabel(type) {
 
 function normalizeAiShapeType(shapeType, pointsCount) {
   const value = String(shapeType || "").toLowerCase();
-  if (value.includes("г") || value.includes("l") || value.includes("l-shape") || pointsCount === 6 || pointsCount === 7) return "lshape";
+  if (value.includes("г") || value.includes("l") || value.includes("l-shape") || (pointsCount >= 6 && pointsCount <= 10)) return "lshape";
   if (value.includes("rect") || value.includes("прям") || pointsCount === 4) return "rectangle";
   return "custom";
 }
@@ -1244,7 +1244,7 @@ function applyInstallerAiDraft(draft) {
   };
 
   normalizeSketchDimensionState();
-  if (state.installerSketch.shapeType !== "custom" || points.length === 7) {
+  if (state.installerSketch.shapeType !== "custom" || (points.length >= 6 && points.length <= 10)) {
     repairSketchLayout();
     return;
   }
@@ -1712,7 +1712,7 @@ function nearestSketchEdge(point) {
 function repairSketchLayout() {
   cleanSketchAfterPointChange();
   const count = state.installerSketch.points.length;
-  if (state.installerSketch.shapeType === "lshape" || count === 6 || count === 7) {
+  if (state.installerSketch.shapeType === "lshape" || (count >= 6 && count <= 10)) {
     return repairLShapeLayout();
   }
   if (state.installerSketch.shapeType === "rectangle" || count === 4) {
@@ -1831,7 +1831,7 @@ function useStructuredLayoutForDimensions() {
   return state.installerSketch.shapeType === "rectangle"
     || state.installerSketch.shapeType === "lshape"
     || count === 4
-    || count === 6;
+    || (count >= 6 && count <= 10);
 }
 
 function applySketchDimensionsToGeometry() {

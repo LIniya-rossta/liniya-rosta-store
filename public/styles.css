@@ -1747,7 +1747,7 @@ select {
 
 .dimension-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 9px;
 }
 
@@ -1767,7 +1767,7 @@ select {
 .dimension-item label {
   min-width: 0;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(34px, auto) minmax(72px, 1fr) auto;
   gap: 7px;
   align-items: center;
 }
@@ -1781,7 +1781,7 @@ select {
 
 .dimension-item input {
   height: 38px;
-  min-width: 0;
+  min-width: 72px;
   border: 0;
   border-radius: 11px;
   padding: 7px 8px;
@@ -2839,22 +2839,23 @@ body[data-theme="dark"] .summary-total {
   }
 
   .dimension-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 8px;
   }
 
   .dimension-item {
     min-height: 48px;
     padding: 6px 7px;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .dimension-item label {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(36px, auto) minmax(92px, 1fr) auto;
   }
 
   .dimension-item input {
     height: 34px;
+    min-width: 92px;
     font-size: 13px;
   }
 
