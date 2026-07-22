@@ -653,6 +653,10 @@ h3 {
   gap: 8px;
 }
 
+.checkout-form label.is-hidden {
+  display: none;
+}
+
 .search-box span,
 .checkout-form span,
 .checkout-form legend {

@@ -1,5 +1,6 @@
 const routes = new Set(["/", "/catalog", "/cart", "/checkout", "/success", "/measure"]);
 const money = new Intl.NumberFormat("ru-RU");
+const KYRGYZ_TIME_ZONE = "Asia/Bishkek";
 
 const previewProducts = [
   {
@@ -250,6 +251,7 @@ function renderCartPage() {
 
 function renderCheckout() {
   const lines = getCartLines();
+  const ready = kyrgyzInputDateTime(120);
   elements.app.innerHTML = `
     <section class="checkout-page page-section">
       <div class="shop-title reveal">
@@ -265,13 +267,16 @@ function renderCheckout() {
         <form class="checkout-card checkout-form" id="checkoutForm">
           <label><span>Имя</span><input name="name" required autocomplete="name" placeholder="Ваше имя"></label>
           <label><span>Телефон</span><input name="phone" required autocomplete="tel" inputmode="tel" value="+996 " placeholder="+996 ..." data-phone-autocode="+996 "></label>
-          <label class="full"><span>Адрес</span><input name="address" required autocomplete="street-address" placeholder="Адрес доставки или самовывоз"></label>
+          <label class="full" id="checkoutAddressField"><span>Адрес доставки</span><input name="address" required autocomplete="street-address" placeholder="Район, улица, дом"></label>
 
           <fieldset>
             <legend>Получение</legend>
             <label><input type="radio" name="method" value="delivery" checked> Доставка</label>
             <label><input type="radio" name="method" value="pickup"> Самовывоз</label>
           </fieldset>
+
+          <label><span>Дата готовности</span><input name="readyDate" required type="date" min="${ready.today}" value="${ready.date}"></label>
+          <label><span>Время, Кыргызстан</span><input name="readyTime" required type="time" value="${ready.time}"></label>
 
           <label class="full"><span>Комментарий</span><textarea name="comment" rows="4" placeholder="Этаж, подъезд, удобное время, вопросы"></textarea></label>
           <button class="btn btn-primary full" type="submit" ${lines.length ? "" : "disabled"}>Оформить заказ</button>
@@ -287,6 +292,7 @@ function renderCheckout() {
   `;
   const form = document.getElementById("checkoutForm");
   bindPhoneInputs();
+  bindFulfillmentControls();
   form?.addEventListener("submit", submitCheckout);
 }
 
@@ -562,6 +568,27 @@ function bindPhoneInputs() {
   });
 }
 
+function bindFulfillmentControls() {
+  const form = document.getElementById("checkoutForm");
+  const addressField = document.getElementById("checkoutAddressField");
+  const addressInput = form?.elements.address;
+  if (!form || !addressField || !addressInput) return;
+
+  const updateAddressState = () => {
+    const method = new FormData(form).get("method");
+    const isPickup = method === "pickup";
+    addressField.classList.toggle("is-hidden", isPickup);
+    addressInput.required = !isPickup;
+    addressInput.disabled = isPickup;
+    if (isPickup) addressInput.value = "";
+  };
+
+  form.querySelectorAll('input[name="method"]').forEach((input) => {
+    input.addEventListener("change", updateAddressState);
+  });
+  updateAddressState();
+}
+
 async function submitCheckout(event) {
   event.preventDefault();
   const lines = getCartLines();
@@ -569,16 +596,24 @@ async function submitCheckout(event) {
   if (!lines.length) return setNote(note, "Корзина пустая.", true);
 
   const form = new FormData(event.currentTarget);
+  const method = form.get("method");
+  const readyDate = form.get("readyDate");
+  const readyTime = form.get("readyTime");
+  if (!readyDate || !readyTime) return setNote(note, "Выберите дату и время готовности заказа.", true);
+
   const payload = {
     type: "cart",
     customer: {
       name: form.get("name"),
       phone: form.get("phone"),
-      address: form.get("address")
+      address: method === "delivery" ? form.get("address") : ""
     },
     fulfillment: {
-      method: form.get("method"),
-      payment: "after_call"
+      method,
+      payment: "after_call",
+      readyDate,
+      readyTime,
+      timeZone: KYRGYZ_TIME_ZONE
     },
     comment: form.get("comment"),
     items: lines.map(({ product, qty }) => ({ productId: product.id, qty }))
@@ -828,6 +863,37 @@ function whatsAppLink(message) {
 
 function formatMoney(value) {
   return `${money.format(Number(value || 0))} сом`;
+}
+
+function kyrgyzInputDateTime(offsetMinutes = 0) {
+  const now = getKyrgyzParts(new Date());
+  const target = getKyrgyzParts(new Date(Date.now() + offsetMinutes * 60 * 1000));
+  return {
+    today: `${now.year}-${now.month}-${now.day}`,
+    date: `${target.year}-${target.month}-${target.day}`,
+    time: `${target.hour}:${target.minute}`
+  };
+}
+
+function getKyrgyzParts(date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: KYRGYZ_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+  return {
+    year: values.year,
+    month: values.month,
+    day: values.day,
+    hour: values.hour === "24" ? "00" : values.hour,
+    minute: values.minute
+  };
 }
 
 function initials(value) {

@@ -7,6 +7,7 @@ const { URL } = require("url");
 const ROOT = __dirname;
 loadEnv(path.join(ROOT, ".env"));
 
+const KYRGYZ_TIME_ZONE = "Asia/Bishkek";
 const PUBLIC_DIR = path.join(ROOT, "public");
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, "data");
 const UPLOAD_DIR = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : path.join(PUBLIC_DIR, "uploads");
@@ -155,7 +156,7 @@ const server = http.createServer(async (req, res) => {
 
     return serveStatic(req, res, url.pathname);
   } catch (error) {
-    console.error(error);
+    if (!error.statusCode || error.statusCode >= 500) console.error(error);
     return json(res, error.statusCode || 500, {
       error: error.publicMessage || "Что-то пошло не так"
     });
@@ -292,6 +293,10 @@ async function createOrder(payload) {
       : "after_call"
   };
 
+  if (type === "cart") {
+    Object.assign(fulfillment, cleanReadyWindow(payload.fulfillment || {}));
+  }
+
   if (type === "measurement" && !customer.address) {
     throw publicError(400, "Укажите адрес объекта");
   }
@@ -334,6 +339,46 @@ function cleanCustomer(customer) {
     phone,
     address
   };
+}
+
+function cleanReadyWindow(fulfillment) {
+  const readyDate = trimText(fulfillment.readyDate, 10);
+  const readyTime = trimText(fulfillment.readyTime, 5);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(readyDate) || !/^\d{2}:\d{2}$/.test(readyTime)) {
+    throw publicError(400, "Выберите дату и время готовности заказа");
+  }
+
+  const readyAt = parseKyrgyzDateTime(readyDate, readyTime);
+  if (!readyAt) throw publicError(400, "Некорректная дата или время готовности");
+  if (readyAt.getTime() < Date.now() - 10 * 60 * 1000) {
+    throw publicError(400, "Выберите будущее время готовности заказа");
+  }
+
+  return {
+    readyDate,
+    readyTime,
+    readyAt: readyAt.toISOString(),
+    timeZone: KYRGYZ_TIME_ZONE
+  };
+}
+
+function parseKyrgyzDateTime(dateValue, timeValue) {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+  const timeMatch = /^(\d{2}):(\d{2})$/.exec(timeValue);
+  if (!dateMatch || !timeMatch) return null;
+
+  const year = Number(dateMatch[1]);
+  const month = Number(dateMatch[2]);
+  const day = Number(dateMatch[3]);
+  const hour = Number(timeMatch[1]);
+  const minute = Number(timeMatch[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return null;
+  const plainDate = new Date(Date.UTC(year, month - 1, day));
+  if (plainDate.getUTCFullYear() !== year || plainDate.getUTCMonth() !== month - 1 || plainDate.getUTCDate() !== day) {
+    return null;
+  }
+
+  return new Date(Date.UTC(year, month - 1, day, hour - 6, minute));
 }
 
 function getCatalogProducts(products) {
@@ -1127,6 +1172,7 @@ async function saveTelegramPhoto(photos, id) {
 function formatOrder(order) {
   const method = order.fulfillment?.method === "pickup" ? "Самовывоз" : "Доставка";
   const payment = order.fulfillment?.payment === "online" ? "Онлайн-оплата" : "После связи менеджера";
+  const readyText = formatReadyWindow(order.fulfillment);
   const lines = [
     `Заказ ${order.id}`,
     `Статус: ${STATUS_LABELS[order.status] || order.status}`,
@@ -1136,13 +1182,33 @@ function formatOrder(order) {
     order.customer.address ? `Адрес: ${order.customer.address}` : "",
     order.area ? `Площадь: ${order.area} м²` : "",
     `Получение: ${method}`,
+    readyText ? `Готовность: ${readyText}` : "",
     `Оплата: ${payment}`,
     order.items.length ? `Товары:\n${order.items.map((item) => `- ${item.title} x ${formatQty(item.qty)} ${item.unit} = ${formatMoney(item.price * item.qty)}`).join("\n")}` : "",
     order.total ? `Итого: ${formatMoney(order.total)}` : "",
     order.comment ? `Комментарий: ${order.comment}` : "",
-    `Создан: ${new Date(order.createdAt).toLocaleString("ru-RU")}`
+    `Создан: ${formatKyrgyzDateTime(order.createdAt)} Кыргызстан`
   ];
   return lines.filter(Boolean).join("\n");
+}
+
+function formatReadyWindow(fulfillment = {}) {
+  if (fulfillment.readyAt) return `${formatKyrgyzDateTime(fulfillment.readyAt)} Кыргызстан`;
+  if (fulfillment.readyDate && fulfillment.readyTime) return `${fulfillment.readyDate} ${fulfillment.readyTime} Кыргызстан`;
+  return "";
+}
+
+function formatKyrgyzDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: KYRGYZ_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function orderKeyboard(order) {
