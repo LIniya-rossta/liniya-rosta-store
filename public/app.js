@@ -251,7 +251,7 @@ function renderCartPage() {
 
 function renderCheckout() {
   const lines = getCartLines();
-  const ready = kyrgyzInputDateTime(120);
+  const ready = kyrgyzInputDateTime();
   elements.app.innerHTML = `
     <section class="checkout-page page-section">
       <div class="shop-title reveal">
@@ -951,9 +951,8 @@ function formatMoney(value) {
 }
 
 function kyrgyzInputDateTime(offsetMinutes = 0) {
-  const roundedTimestamp = Math.ceil((Date.now() + offsetMinutes * 60 * 1000) / (15 * 60 * 1000)) * 15 * 60 * 1000;
   const now = getKyrgyzParts(new Date());
-  const target = getKyrgyzParts(new Date(roundedTimestamp));
+  const target = getKyrgyzParts(new Date(Date.now() + offsetMinutes * 60 * 1000));
   return {
     today: `${now.year}-${now.month}-${now.day}`,
     date: `${target.year}-${target.month}-${target.day}`,
@@ -1070,7 +1069,7 @@ function timeToMinutes(value) {
 
 function minutesToTime(value) {
   const day = 24 * 60;
-  const minutes = ((Math.round(value / 15) * 15) % day + day) % day;
+  const minutes = (value % day + day) % day;
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 
