@@ -37,11 +37,18 @@ const TELEGRAM_OBSERVERS = new Set(
     .filter(Boolean)
 );
 const ADMIN_SESSION_MS = Math.max(1, Number(process.env.TELEGRAM_ADMIN_SESSION_HOURS || 12)) * 60 * 60 * 1000;
+const MANAGER_SESSION_MS = Math.max(1, Number(process.env.TELEGRAM_MANAGER_SESSION_HOURS || 12)) * 60 * 60 * 1000;
+const MAX_JSON_BODY_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_JSON_BODY_MB || 5) * 1024 * 1024);
 const COMPANY_WHATSAPP = process.env.COMPANY_WHATSAPP || "996990883883";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+const OPENAI_INSTALLER_AI_MODEL = process.env.OPENAI_INSTALLER_AI_MODEL || "gpt-5.6";
 
 const PRODUCTS_FILE = path.join(DATA_DIR, "products.json");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 const WATCHERS_FILE = path.join(DATA_DIR, "telegram-watchers.json");
+const INSTALLER_REQUESTS_FILE = path.join(DATA_DIR, "installer-requests.json");
+const MANAGER_BINDINGS_FILE = path.join(DATA_DIR, "telegram-manager-bindings.json");
+const TELEGRAM_MANAGERS = getTelegramManagers();
 const DEMO_PRODUCTS = [
   {
     id: "preview-laminate",
@@ -104,6 +111,7 @@ const MESSAGE_SEPARATOR = "------------------------------";
 
 const botState = new Map();
 const adminSessions = new Map();
+const managerSessions = new Map();
 let botOffset = 0;
 
 ensureStorage();
@@ -119,6 +127,15 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    if (req.method === "GET" && url.pathname === "/api/managers/public") {
+      return json(res, 200, {
+        managers: TELEGRAM_MANAGERS.map((manager) => ({
+          id: manager.id,
+          name: manager.name
+        }))
+      });
+    }
+
     if (req.method === "POST" && url.pathname === "/api/orders") {
       const payload = await readBody(req);
       const order = await createOrder(payload);
@@ -128,6 +145,21 @@ const server = http.createServer(async (req, res) => {
       return json(res, 201, { order });
     }
 
+    if (req.method === "POST" && url.pathname === "/api/installer-requests") {
+      const payload = await readBody(req);
+      const request = await createInstallerRequest(payload);
+      notifyInstallerManagers(request).catch((error) => {
+        console.error("Telegram installer notification failed:", error.message);
+      });
+      return json(res, 201, { request });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/installer-ai-draft") {
+      const payload = await readBody(req);
+      const draft = await createInstallerAiDraft(payload);
+      return json(res, 200, { draft });
+    }
+
     if (req.method === "POST" && url.pathname.startsWith("/api/telegram/webhook/")) {
       if (!TELEGRAM_WEBHOOK_SECRET || url.pathname !== telegramWebhookPath()) {
         return text(res, 403, "Forbidden");
@@ -135,7 +167,7 @@ const server = http.createServer(async (req, res) => {
       if (req.headers["x-telegram-bot-api-secret-token"] !== TELEGRAM_WEBHOOK_SECRET) {
         return text(res, 403, "Forbidden");
       }
-      if (!ENABLE_TELEGRAM_BOT || !TELEGRAM_BOT_TOKEN || !TELEGRAM_ADMINS.size) {
+      if (!ENABLE_TELEGRAM_BOT || !TELEGRAM_BOT_TOKEN) {
         return json(res, 200, { ok: true, skipped: true });
       }
       const update = await readBody(req);
@@ -147,11 +179,14 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         telegramPanel: "admin-v2",
-        telegram: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMINS.size),
+        telegram: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMINS.size || TELEGRAM_MANAGERS.length)),
         telegramEnabled: ENABLE_TELEGRAM_BOT,
         telegramMode: TELEGRAM_BOT_MODE,
         telegramWebhookSecret: Boolean(TELEGRAM_WEBHOOK_SECRET),
-        telegramAdminPassword: Boolean(TELEGRAM_ADMIN_PASSWORD)
+        telegramAdminPassword: Boolean(TELEGRAM_ADMIN_PASSWORD),
+        telegramManagers: TELEGRAM_MANAGERS.length,
+        telegramReady: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMIN_PASSWORD && TELEGRAM_MANAGERS.length),
+        installerAi: Boolean(OPENAI_API_KEY)
       });
     }
 
@@ -166,12 +201,12 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Линия Роста: http://localhost:${PORT}`);
-  if (ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMINS.size) {
+  if (ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMINS.size || TELEGRAM_MANAGERS.length)) {
     startTelegramIntegration().catch((error) => {
       console.error("Telegram setup failed:", error.message);
     });
   } else {
-    console.log("Telegram bot is off: set TELEGRAM_BOT_TOKEN and TELEGRAM_ADMIN_IDS in .env");
+    console.log("Telegram bot is off: set TELEGRAM_BOT_TOKEN and admin or manager access in .env");
   }
 });
 
@@ -194,6 +229,28 @@ function deriveTelegramSecret(token) {
   return `lr_${crypto.createHash("sha256").update(token).digest("hex").slice(0, 32)}`;
 }
 
+function getTelegramManagers() {
+  const configured = [1, 2, 3, 4]
+    .map((index) => ({
+      id: `manager-${index}`,
+      name: process.env[`TELEGRAM_MANAGER_${index}_NAME`] || `Менеджер ${index}`,
+      password: process.env[`TELEGRAM_MANAGER_${index}_PASSWORD`] || ""
+    }))
+    .filter((manager) => manager.password);
+
+  if (configured.length) return configured;
+
+  const localOnly = !RENDER_BASE_URL && process.env.ENABLE_LOCAL_MANAGER_DEMO_PASSWORDS !== "false";
+  if (!localOnly) return [];
+
+  return [
+    { id: "manager-1", name: "Менеджер 1", password: "285801" },
+    { id: "manager-2", name: "Менеджер 2", password: "285802" },
+    { id: "manager-3", name: "Менеджер 3", password: "285803" },
+    { id: "manager-4", name: "Менеджер 4", password: "285804" }
+  ];
+}
+
 function ensureStorage() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -206,6 +263,8 @@ function ensureStorage() {
   }
   if (!fs.existsSync(ORDERS_FILE)) fs.writeFileSync(ORDERS_FILE, "[]\n");
   if (!fs.existsSync(WATCHERS_FILE)) fs.writeFileSync(WATCHERS_FILE, "[]\n");
+  if (!fs.existsSync(INSTALLER_REQUESTS_FILE)) fs.writeFileSync(INSTALLER_REQUESTS_FILE, "[]\n");
+  if (!fs.existsSync(MANAGER_BINDINGS_FILE)) fs.writeFileSync(MANAGER_BINDINGS_FILE, "[]\n");
 }
 
 async function readJson(file, fallback) {
@@ -227,10 +286,10 @@ async function readBody(req) {
   const chunks = [];
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 1024 * 1024) {
+    if (size > MAX_JSON_BODY_BYTES) {
       const error = new Error("Body is too large");
       error.statusCode = 413;
-      error.publicMessage = "Слишком большой запрос";
+      error.publicMessage = "Слишком большой запрос. Загрузите фото поменьше.";
       throw error;
     }
     chunks.push(chunk);
@@ -327,6 +386,539 @@ async function createOrder(payload) {
   return order;
 }
 
+async function createInstallerRequest(payload) {
+  const manager = TELEGRAM_MANAGERS.find((item) => item.id === trimText(payload.managerId, 80));
+  if (!manager) throw publicError(400, "Выберите менеджера");
+
+  const products = getCatalogProducts(await readJson(PRODUCTS_FILE, []));
+  const product = products.find((item) => item.id === trimText(payload.materialId, 160) && item.active !== false);
+  if (!product) throw publicError(400, "Выберите материал из каталога");
+
+  const installer = cleanCustomer(payload.installer || {});
+  const object = {
+    address: trimText(payload.object?.address, 260),
+    area: clampDecimal(payload.object?.area, 0, 100000),
+    perimeter: clampDecimal(payload.object?.perimeter, 0, 100000),
+    comment: trimText(payload.object?.comment, 1200)
+  };
+  if (!object.address) throw publicError(400, "Укажите адрес объекта");
+
+  const fulfillment = {
+    method: ["delivery", "pickup"].includes(payload.fulfillment?.method) ? payload.fulfillment.method : "delivery",
+    deliveryAddress: trimText(payload.fulfillment?.deliveryAddress, 260),
+    ...cleanReadyWindow(payload.fulfillment || {})
+  };
+  if (fulfillment.method === "delivery" && !fulfillment.deliveryAddress) {
+    throw publicError(400, "Укажите адрес доставки");
+  }
+
+  const sketch = cleanInstallerSketch(payload.sketch || {});
+  const photo = await saveInstallerSketchPhoto(payload.sketchPhoto);
+  if (sketch.points.length < 3 && !photo) {
+    throw publicError(400, "Добавьте чертеж или фото чертежа");
+  }
+
+  const requests = await readJson(INSTALLER_REQUESTS_FILE, []);
+  const request = {
+    id: makeInstallerRequestId(requests),
+    status: "new",
+    manager: {
+      id: manager.id,
+      name: manager.name
+    },
+    installer,
+    material: {
+      productId: product.id,
+      title: product.title,
+      category: product.category,
+      price: Number(product.price || 0),
+      unit: product.unit || "шт"
+    },
+    object,
+    fulfillment,
+    sketch,
+    sketchPhoto: photo,
+    source: "installer-page",
+    createdAt: new Date().toISOString()
+  };
+  request.sketchDrawing = await saveGeneratedInstallerSketch(request);
+
+  requests.unshift(request);
+  await writeJson(INSTALLER_REQUESTS_FILE, requests);
+  return request;
+}
+
+async function createInstallerAiDraft(payload) {
+  const photo = payload.photo || payload.sketchPhoto || {};
+  if (!photo.dataUrl) throw publicError(400, "Прикрепите фото чертежа");
+  validateInstallerPhotoDataUrl(photo.dataUrl);
+  if (!OPENAI_API_KEY) {
+    throw publicError(501, "AI-распознавание не подключено. Добавьте OPENAI_API_KEY в Render Environment или локальный .env.");
+  }
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: OPENAI_INSTALLER_AI_MODEL,
+      input: [
+        {
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text: [
+                "Ты помощник компании Линия Роста для раскроя натяжных потолков.",
+                "Твоя задача: по фото чертежа вернуть машинный черновик контура полотна.",
+                "Определи форму потолка, точки по часовой стрелке, размеры сторон, диагонали, отверстия под трубы/люстру/светильники и короткие предупреждения.",
+                "Все размеры возвращай в МЕТРАХ. Если на фото написано 345 см, верни 3.45.",
+                "Координаты точек и отверстий нормализуй в поле 640x420: x от 28 до 612, y от 28 до 392.",
+                "Не выдумывай размеры, которые не видишь. Если размер не читается, не добавляй его и напиши предупреждение.",
+                "Для Г-образной формы используй отдельные точки на каждом углу выреза."
+              ].join(" ")
+            }
+          ]
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "Распознай этот чертеж натяжного потолка и верни строгий JSON по схеме."
+            },
+            {
+              type: "input_image",
+              image_url: photo.dataUrl,
+              detail: "high"
+            }
+          ]
+        }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "installer_sketch_draft",
+          strict: true,
+          schema: installerAiDraftSchema()
+        }
+      },
+      max_output_tokens: 2200
+    })
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data.error?.message || "AI не смог распознать фото";
+    throw publicError(response.status || 502, message);
+  }
+
+  const outputText = extractOpenAiOutputText(data);
+  if (!outputText) throw publicError(502, "AI вернул пустой ответ");
+
+  let parsed;
+  try {
+    parsed = JSON.parse(outputText);
+  } catch {
+    throw publicError(502, "AI вернул некорректный формат чертежа");
+  }
+
+  return normalizeInstallerAiDraft(parsed);
+}
+
+function cleanInstallerSketch(sketch) {
+  const rawPoints = Array.isArray(sketch.points) ? sketch.points : [];
+  const points = rawPoints.slice(0, 24).map((point, index) => ({
+    label: trimText(point.label, 8) || String.fromCharCode(65 + index),
+    x: clampDecimal(point.x, 0, 640),
+    y: clampDecimal(point.y, 0, 420)
+  }));
+  const edges = installerSketchEdges(points);
+  const diagonals = installerSketchDiagonals(points);
+  const dimensions = cleanDimensionMap(sketch.dimensions || {}, edges.map((edge) => edge.key));
+  const missingDimensions = points.length >= 3 ? edges.filter((edge) => !dimensions[edge.key]).map((edge) => edge.key) : [];
+  if (missingDimensions.length) {
+    throw publicError(400, `Введите точные размеры сторон: ${missingDimensions.join(", ")}`);
+  }
+
+  return {
+    points,
+    dimensions,
+    diagonals: cleanDimensionMap(sketch.diagonals || {}, diagonals.map((diagonal) => diagonal.key)),
+    holes: cleanInstallerSketchHoles(sketch.holes || []),
+    area: clampDecimal(sketch.area, 0, 100000),
+    perimeter: clampDecimal(sketch.perimeter, 0, 100000),
+    note: trimText(sketch.note, 1200),
+    aiConfidence: clampDecimal(sketch.aiConfidence, 0, 1, 2),
+    warnings: cleanTextList(sketch.warnings, 8, 180),
+    aiDraft: Boolean(sketch.aiDraft)
+  };
+}
+
+function cleanInstallerSketchHoles(source) {
+  if (!Array.isArray(source)) return [];
+  return source.slice(0, 40).map((hole, index) => ({
+    type: ["pipe", "lamp", "spot", "other"].includes(hole.type) ? hole.type : "other",
+    label: trimText(hole.label, 60) || `Точка ${index + 1}`,
+    x: clampDecimal(hole.x, 0, 640),
+    y: clampDecimal(hole.y, 0, 420),
+    diameterCm: clampDecimal(hole.diameterCm, 0, 1000)
+  }));
+}
+
+function cleanTextList(source, maxItems, maxText) {
+  if (!Array.isArray(source)) return [];
+  return source
+    .map((item) => trimText(item, maxText))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function cleanDimensionMap(source, allowedKeys) {
+  const allowed = new Set(allowedKeys);
+  const clean = {};
+  for (const [key, value] of Object.entries(source || {})) {
+    if (!allowed.has(key)) continue;
+    const number = clampDecimal(value, 0, 100000, 2);
+    if (number > 0) clean[key] = number;
+  }
+  return clean;
+}
+
+function installerAiDraftSchema() {
+  const pointSchema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["label", "x", "y"],
+    properties: {
+      label: { type: "string" },
+      x: { type: "number" },
+      y: { type: "number" }
+    }
+  };
+  const sizeSchema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["key", "meters", "sourceLabel"],
+    properties: {
+      key: { type: "string" },
+      meters: { type: "number" },
+      sourceLabel: { type: "string" }
+    }
+  };
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["confidence", "shapeType", "points", "dimensions", "diagonals", "holes", "fixtures", "area", "perimeter", "notes", "warnings"],
+    properties: {
+      confidence: { type: "number" },
+      shapeType: { type: "string" },
+      points: {
+        type: "array",
+        minItems: 3,
+        maxItems: 24,
+        items: pointSchema
+      },
+      dimensions: {
+        type: "array",
+        items: sizeSchema
+      },
+      diagonals: {
+        type: "array",
+        items: sizeSchema
+      },
+      holes: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["type", "label", "x", "y", "diameterCm"],
+          properties: {
+            type: { type: "string", enum: ["pipe", "lamp", "spot", "other"] },
+            label: { type: "string" },
+            x: { type: "number" },
+            y: { type: "number" },
+            diameterCm: { type: "number" }
+          }
+        }
+      },
+      fixtures: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["type", "label", "count"],
+          properties: {
+            type: { type: "string" },
+            label: { type: "string" },
+            count: { type: "number" }
+          }
+        }
+      },
+      area: { type: "number" },
+      perimeter: { type: "number" },
+      notes: { type: "string" },
+      warnings: {
+        type: "array",
+        items: { type: "string" }
+      }
+    }
+  };
+}
+
+function extractOpenAiOutputText(data) {
+  if (typeof data.output_text === "string") return data.output_text;
+  const chunks = [];
+  for (const item of data.output || []) {
+    for (const content of item.content || []) {
+      if (typeof content.text === "string") chunks.push(content.text);
+      if (typeof content.output_text === "string") chunks.push(content.output_text);
+    }
+  }
+  return chunks.join("\n").trim();
+}
+
+function normalizeInstallerAiDraft(raw) {
+  const points = Array.isArray(raw.points)
+    ? raw.points.slice(0, 24).map((point, index) => ({
+        label: trimText(point.label, 8) || String.fromCharCode(65 + index),
+        x: clampDecimal(point.x, 28, 612),
+        y: clampDecimal(point.y, 28, 392)
+      }))
+    : [];
+  relabelPoints(points);
+  const edges = installerSketchEdges(points);
+  const diagonals = installerSketchDiagonals(points);
+  const dimensions = dimensionArrayToMap(raw.dimensions, edges.map((edge) => edge.key));
+  const diagonalMap = dimensionArrayToMap(raw.diagonals, diagonals.map((diagonal) => diagonal.key));
+  return {
+    confidence: clampDecimal(raw.confidence, 0, 1),
+    shapeType: trimText(raw.shapeType, 80),
+    points,
+    dimensions,
+    diagonals: diagonalMap,
+    holes: cleanInstallerSketchHoles(raw.holes || []),
+    fixtures: cleanFixtures(raw.fixtures),
+    area: normalizeAiMeters(raw.area),
+    perimeter: normalizeAiMeters(raw.perimeter),
+    notes: trimText(raw.notes, 1200),
+    warnings: cleanTextList(raw.warnings, 8, 180),
+    aiDraft: true
+  };
+}
+
+function dimensionArrayToMap(items, allowedKeys) {
+  const allowed = new Set(allowedKeys);
+  const reverseKeys = new Map(allowedKeys.map((key) => [key.split("-").reverse().join("-"), key]));
+  const map = {};
+  for (const item of Array.isArray(items) ? items : []) {
+    const rawKey = trimText(item.key, 32).toUpperCase().replace(/\s+/g, "");
+    const key = allowed.has(rawKey) ? rawKey : reverseKeys.get(rawKey);
+    if (!key) continue;
+    const meters = normalizeAiMeters(item.meters);
+    if (meters > 0) map[key] = meters;
+  }
+  return map;
+}
+
+function normalizeAiMeters(value) {
+  const number = Number(String(value || "").replace(",", "."));
+  if (!Number.isFinite(number) || number <= 0) return 0;
+  const meters = number > 30 && number <= 2000 ? number / 100 : number;
+  return Math.round(meters * 100) / 100;
+}
+
+function relabelPoints(points) {
+  points.forEach((point, index) => {
+    point.label = String.fromCharCode(65 + index);
+  });
+}
+
+function cleanFixtures(source) {
+  if (!Array.isArray(source)) return [];
+  return source.slice(0, 20).map((fixture) => ({
+    type: trimText(fixture.type, 60) || "other",
+    label: trimText(fixture.label, 120),
+    count: clampNumber(fixture.count, 0, 999)
+  }));
+}
+
+function validateInstallerPhotoDataUrl(dataUrl) {
+  const match = /^data:(image\/(?:png|jpeg|jpg|webp));base64,([a-zA-Z0-9+/=]+)$/.exec(String(dataUrl || ""));
+  if (!match) throw publicError(400, "Фото чертежа должно быть PNG, JPG или WEBP");
+  const bytes = Math.floor(match[2].length * 0.75);
+  if (bytes > 4 * 1024 * 1024) throw publicError(413, "Фото чертежа слишком большое");
+}
+
+async function saveInstallerSketchPhoto(photo) {
+  if (!photo || !photo.dataUrl) return null;
+  validateInstallerPhotoDataUrl(photo.dataUrl);
+  const match = /^data:(image\/(?:png|jpeg|jpg|webp));base64,([a-zA-Z0-9+/=]+)$/.exec(String(photo.dataUrl));
+
+  const mime = match[1].replace("image/jpg", "image/jpeg");
+  const ext = { "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp" }[mime] || ".jpg";
+  const buffer = Buffer.from(match[2], "base64");
+  if (buffer.length > 4 * 1024 * 1024) throw publicError(413, "Фото чертежа слишком большое");
+
+  const folder = path.join(UPLOAD_DIR, "installer");
+  await fs.promises.mkdir(folder, { recursive: true });
+  const filename = `sketch-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}${ext}`;
+  await fs.promises.writeFile(path.join(folder, filename), buffer);
+
+  return {
+    name: trimText(photo.name, 120) || filename,
+    type: mime,
+    url: `/uploads/installer/${filename}`
+  };
+}
+
+async function saveGeneratedInstallerSketch(request) {
+  if (!Array.isArray(request.sketch?.points) || request.sketch.points.length < 2) return null;
+  const folder = path.join(UPLOAD_DIR, "installer");
+  await fs.promises.mkdir(folder, { recursive: true });
+  const filename = `${request.id}-drawing.svg`;
+  await fs.promises.writeFile(path.join(folder, filename), installerSketchSvg(request));
+  return {
+    name: filename,
+    type: "image/svg+xml",
+    url: `/uploads/installer/${filename}`
+  };
+}
+
+function installerSketchSvg(request) {
+  const points = request.sketch.points;
+  const dimensions = request.sketch.dimensions || {};
+  const diagonals = request.sketch.diagonals || {};
+  const holes = request.sketch.holes || [];
+  const pointString = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const edges = installerSketchEdges(points);
+  const diagonalItems = installerSketchDiagonals(points).filter((diagonal) => diagonals[diagonal.key]);
+  const dimensionRows = [
+    ...edges.map((edge) => `${edge.key}: ${formatQty(dimensions[edge.key])} м`),
+    ...diagonalItems.map((diagonal) => `${diagonal.key}: ${formatQty(diagonals[diagonal.key])} м`),
+    ...holes.map((hole) => `${holeLabel(hole)}: ${Math.round(hole.x)},${Math.round(hole.y)}`)
+  ];
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="900" viewBox="0 0 1280 900">
+  <defs>
+    <linearGradient id="line" x1="0" x2="1">
+      <stop offset="0" stop-color="#63e6ff"/>
+      <stop offset="1" stop-color="#f3dca8"/>
+    </linearGradient>
+    <pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse">
+      <path d="M 34 0 L 0 0 0 34" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="900" fill="#07111a"/>
+  <rect x="38" y="38" width="1204" height="824" rx="42" fill="#101b25" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
+  <text x="76" y="104" fill="#f3dca8" font-family="Arial, sans-serif" font-size="28" font-weight="800">${escapeXml(request.id)}</text>
+  <text x="76" y="154" fill="#f6fbff" font-family="Arial, sans-serif" font-size="42" font-weight="900">${escapeXml(request.material?.title || "Чертеж полотна")}</text>
+  <text x="76" y="202" fill="#91a4b3" font-family="Arial, sans-serif" font-size="24">${escapeXml(request.installer?.name || "")} · ${escapeXml(request.installer?.phone || "")}</text>
+  <g transform="translate(70 265) scale(1.55)">
+    <rect x="0" y="0" width="640" height="420" rx="28" fill="url(#grid)" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
+    ${points.length >= 3 ? `<polygon points="${pointString}" fill="rgba(99,230,255,0.1)" stroke="none"/>` : ""}
+    ${diagonalItems.map((diagonal) => `<line x1="${diagonal.from.x}" y1="${diagonal.from.y}" x2="${diagonal.to.x}" y2="${diagonal.to.y}" stroke="rgba(243,220,168,0.48)" stroke-width="2" stroke-dasharray="10 8"/>`).join("")}
+    ${points.length >= 2 ? `<polyline points="${pointString}${points.length >= 3 ? ` ${points[0].x},${points[0].y}` : ""}" fill="none" stroke="url(#line)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>` : ""}
+    ${edges.map((edge) => svgDimensionLabel(edge.midpoint, `${edge.key}: ${formatQty(dimensions[edge.key])} м`)).join("")}
+    ${diagonalItems.map((diagonal) => svgDimensionLabel(diagonal.midpoint, `${diagonal.key}: ${formatQty(diagonals[diagonal.key])} м`, true)).join("")}
+    ${holes.map((hole) => svgHoleMarker(hole)).join("")}
+    ${points.map((point) => `
+      <circle cx="${point.x}" cy="${point.y}" r="14" fill="#07111a" stroke="#f3dca8" stroke-width="4"/>
+      <text x="${point.x}" y="${point.y + 5}" fill="#ffffff" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="900">${escapeXml(point.label)}</text>
+    `).join("")}
+  </g>
+  <g transform="translate(1110 280)">
+    <text x="0" y="0" fill="#f3dca8" font-family="Arial, sans-serif" font-size="20" font-weight="900" text-anchor="end">РАЗМЕРЫ</text>
+    ${dimensionRows.slice(0, 18).map((line, index) => `<text x="0" y="${42 + index * 30}" fill="#d6e3ec" font-family="Arial, sans-serif" font-size="22" text-anchor="end">${escapeXml(line)}</text>`).join("")}
+  </g>
+  <text x="76" y="820" fill="#91a4b3" font-family="Arial, sans-serif" font-size="22">${escapeXml(request.object?.address || "")}</text>
+  <text x="76" y="852" fill="#91a4b3" font-family="Arial, sans-serif" font-size="18">Линия Роста · чертеж от монтажника · ${escapeXml(formatKyrgyzDateTime(request.createdAt))} Кыргызстан</text>
+</svg>`;
+}
+
+function svgHoleMarker(hole) {
+  const radius = hole.type === "lamp" ? 18 : hole.type === "spot" ? 11 : 9;
+  const stroke = hole.type === "pipe" ? "#63e6ff" : hole.type === "lamp" ? "#f3dca8" : "#ffffff";
+  const label = holeLabel(hole);
+  return `
+    <g>
+      <circle cx="${hole.x}" cy="${hole.y}" r="${radius}" fill="rgba(7,17,26,0.82)" stroke="${stroke}" stroke-width="4"/>
+      <text x="${hole.x}" y="${hole.y + radius + 18}" fill="#ffffff" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="900">${escapeXml(label)}</text>
+    </g>
+  `;
+}
+
+function holeLabel(hole) {
+  const labels = {
+    pipe: "Труба",
+    lamp: "Люстра",
+    spot: "Точка",
+    other: "Отверстие"
+  };
+  return hole.label || labels[hole.type] || "Отверстие";
+}
+
+function svgDimensionLabel(point, label, diagonal = false) {
+  const width = Math.max(86, String(label).length * 8);
+  return `
+    <g>
+      <rect x="${point.x - width / 2}" y="${point.y - 17}" width="${width}" height="34" rx="13" fill="${diagonal ? "rgba(217,173,104,0.86)" : "rgba(8,14,22,0.88)"}" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+      <text x="${point.x}" y="${point.y + 6}" fill="${diagonal ? "#07111a" : "#ffffff"}" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="900">${escapeXml(label)}</text>
+    </g>
+  `;
+}
+
+function installerSketchEdges(points) {
+  if (!Array.isArray(points) || points.length < 2) return [];
+  return points.map((point, index) => {
+    const next = points[(index + 1) % points.length];
+    return {
+      key: `${point.label}-${next.label}`,
+      from: point,
+      to: next,
+      midpoint: {
+        x: Math.round((point.x + next.x) / 2),
+        y: Math.round((point.y + next.y) / 2)
+      }
+    };
+  });
+}
+
+function installerSketchDiagonals(points) {
+  if (!Array.isArray(points) || points.length < 4) return [];
+  const diagonals = [];
+  for (let fromIndex = 0; fromIndex < points.length; fromIndex += 1) {
+    for (let toIndex = fromIndex + 1; toIndex < points.length; toIndex += 1) {
+      const isNeighbor = toIndex === fromIndex + 1 || (fromIndex === 0 && toIndex === points.length - 1);
+      if (isNeighbor) continue;
+      const from = points[fromIndex];
+      const to = points[toIndex];
+      diagonals.push({
+        key: `${from.label}-${to.label}`,
+        from,
+        to,
+        midpoint: {
+          x: Math.round((from.x + to.x) / 2),
+          y: Math.round((from.y + to.y) / 2)
+        }
+      });
+    }
+  }
+  return diagonals;
+}
+
+function escapeXml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
 function cleanCustomer(customer) {
   const name = trimText(customer.name, 120);
   const phone = trimText(customer.phone, 40);
@@ -415,6 +1007,13 @@ function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, Math.round(number)));
 }
 
+function clampDecimal(value, min, max, precision = 1) {
+  const number = Number(String(value || "").replace(",", "."));
+  if (!Number.isFinite(number)) return min;
+  const factor = 10 ** precision;
+  return Math.min(max, Math.max(min, Math.round(number * factor) / factor));
+}
+
 function clampQuantity(value, unit) {
   const number = Number(String(value || "").replace(",", "."));
   if (!Number.isFinite(number) || number <= 0) return 1;
@@ -439,6 +1038,14 @@ function makeOrderId(orders = []) {
     return match ? Math.max(max, Number(match[1])) : max;
   }, 1000);
   return `LR-${maxNumber + 1}`;
+}
+
+function makeInstallerRequestId(requests = []) {
+  const maxNumber = requests.reduce((max, request) => {
+    const match = /^MR-(\d+)$/.exec(String(request.id || ""));
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 1000);
+  return `MR-${maxNumber + 1}`;
 }
 
 function serveStatic(req, res, pathname) {
@@ -504,11 +1111,7 @@ async function startTelegramIntegration() {
     await setupTelegramWebhook();
     return;
   }
-  if (!TELEGRAM_DELETE_WEBHOOK_ON_POLLING) {
-    console.log("Telegram polling is off to keep the production webhook untouched.");
-    return;
-  }
-  await tgApi("deleteWebhook", { drop_pending_updates: false });
+  if (TELEGRAM_DELETE_WEBHOOK_ON_POLLING) await tgApi("deleteWebhook", { drop_pending_updates: false });
   startTelegramBot();
 }
 
@@ -534,8 +1137,10 @@ async function setTelegramCommands() {
     commands: [
       { command: "start", description: "Запустить Telegram-панель" },
       { command: "admin", description: "Войти в админ-панель" },
+      { command: "manager", description: "Войти как менеджер" },
       { command: "watch", description: "Наблюдать за новыми заказами" },
       { command: "orders", description: "Последние заказы" },
+      { command: "installer_requests", description: "Заявки монтажников" },
       { command: "week", description: "Сводка за неделю" },
       { command: "cancel", description: "Отменить текущее действие" }
     ]
@@ -586,14 +1191,23 @@ async function handleTelegramUpdate(update) {
   }
 
   if (state?.flow === "login") return continueLoginFlow(chatId, fromId, textValue, state);
+  if (state?.flow === "manager_login") return continueManagerLoginFlow(chatId, fromId, textValue, state, message.chat);
   if (state?.flow === "product") return continueProductFlow(chatId, fromId, message, textValue, state);
   if (state?.flow === "edit_product") return continueFindProductFlow(chatId, fromId, textValue, state);
   if (state?.flow === "edit_field") return continueEditFieldFlow(chatId, fromId, message, textValue, state);
 
   if (textValue === "/start" || textValue === "Старт") return sendStartMenu(chatId);
   if (textValue === "/admin" || textValue === "Войти в админ-панель") return startAdminLogin(chatId, fromId);
+  if (textValue === "/manager" || textValue === "Менеджера") return startManagerLogin(chatId, fromId);
   if (textValue === "/watch" || textValue === "Наблюдать за заказами") return subscribeWatcher(chatId, fromId, message.chat);
   if (textValue === "/watch_off") return unsubscribeWatcher(chatId);
+
+  const managerSession = getManagerSession(fromId);
+  if (textValue === "📐 Заявки монтажников" || textValue === "/installer_requests") {
+    if (!managerSession) return startManagerLogin(chatId, fromId);
+    return sendInstallerRequests(chatId, managerSession.managerId);
+  }
+  if (textValue === "🚪 Выйти" && managerSession && !isAdminSession(fromId)) return logoutManager(chatId, fromId);
 
   if (!isAdminSession(fromId)) return sendStartMenu(chatId, "Выберите режим работы бота.");
 
@@ -632,6 +1246,68 @@ function markAdminSession(fromId, chatId) {
   });
 }
 
+function getManagerSession(fromId) {
+  const session = managerSessions.get(fromId);
+  if (!session) return null;
+  if (session.expiresAt <= Date.now()) {
+    managerSessions.delete(fromId);
+    return null;
+  }
+  return session;
+}
+
+function markManagerSession(fromId, chatId, managerId) {
+  managerSessions.set(fromId, {
+    chatId,
+    managerId,
+    expiresAt: Date.now() + MANAGER_SESSION_MS
+  });
+}
+
+async function startManagerLogin(chatId, fromId) {
+  if (!TELEGRAM_MANAGERS.length) {
+    return sendStartMenu(chatId, "Пароли менеджеров не настроены на сервере.");
+  }
+  botState.set(stateKey(chatId, fromId), { flow: "manager_login", step: "password" });
+  return sendMessage(chatId, "Введите пароль менеджера.", cancelKeyboard());
+}
+
+async function continueManagerLoginFlow(chatId, fromId, textValue, state, chat = {}) {
+  if (state.step !== "password") return startManagerLogin(chatId, fromId);
+
+  const manager = TELEGRAM_MANAGERS.find((item) => item.password === textValue);
+  if (!manager) {
+    return sendMessage(chatId, "Пароль неверный. Попробуйте еще раз или нажмите /cancel.", cancelKeyboard());
+  }
+
+  botState.delete(stateKey(chatId, fromId));
+  markManagerSession(fromId, chatId, manager.id);
+  await bindManagerChat(manager.id, chatId, fromId, chat);
+  return sendManagerPanel(chatId, `Вход выполнен: ${manager.name}.`, manager.id);
+}
+
+async function logoutManager(chatId, fromId) {
+  managerSessions.delete(fromId);
+  botState.delete(stateKey(chatId, fromId));
+  return sendStartMenu(chatId, "Вы вышли из панели менеджера.");
+}
+
+async function bindManagerChat(managerId, chatId, fromId, chat = {}) {
+  const bindings = await readJson(MANAGER_BINDINGS_FILE, []);
+  const existing = bindings.find((item) => item.chatId === chatId);
+  const next = {
+    managerId,
+    chatId,
+    userId: fromId,
+    title: chat.title || chat.username || chat.first_name || `chat ${chatId}`,
+    updatedAt: new Date().toISOString()
+  };
+
+  if (existing) Object.assign(existing, next);
+  else bindings.unshift({ ...next, createdAt: new Date().toISOString() });
+  await writeJson(MANAGER_BINDINGS_FILE, bindings);
+}
+
 function canRegisterWatcher(fromId) {
   return TELEGRAM_ADMINS.has(fromId) || TELEGRAM_OBSERVERS.has(fromId) || isAdminSession(fromId);
 }
@@ -639,14 +1315,17 @@ function canRegisterWatcher(fromId) {
 async function sendStartMenu(chatId, prefix = "Линия Роста") {
   return sendMessage(
     chatId,
-    `${prefix}\n\nВыберите режим: войти в админ-панель или просто получать новые заказы с сайта.`,
+    `${prefix}\n\nВыберите режим: админ-панель, наблюдение за заказами или вход менеджера.`,
     startKeyboard()
   );
 }
 
 function startKeyboard() {
   return {
-    keyboard: [[{ text: "Войти в админ-панель" }, { text: "Наблюдать за заказами" }]],
+    keyboard: [
+      [{ text: "Войти в админ-панель" }, { text: "Наблюдать за заказами" }],
+      [{ text: "Менеджера" }]
+    ],
     resize_keyboard: true
   };
 }
@@ -1232,6 +1911,71 @@ function formatOrderItem(item, index) {
   return `${index + 1}. ${item.title}\n   Кол-во: ${qty}\n   Сумма: ${sum}`;
 }
 
+function formatInstallerRequest(request) {
+  const installer = request.installer || {};
+  const material = request.material || {};
+  const object = request.object || {};
+  const fulfillment = request.fulfillment || {};
+  const sketch = request.sketch || {};
+  const method = fulfillment.method === "pickup" ? "Самовывоз" : "Доставка";
+  const photoUrl = request.sketchPhoto?.url ? new URL(request.sketchPhoto.url, PUBLIC_BASE_URL).toString() : "";
+  const drawingUrl = request.sketchDrawing?.url ? new URL(request.sketchDrawing.url, PUBLIC_BASE_URL).toString() : "";
+  const dimensionLines = Object.entries(sketch.dimensions || {}).map(([key, value]) => `${key}: ${formatQty(value)} м`);
+  const diagonalLines = Object.entries(sketch.diagonals || {}).map(([key, value]) => `${key}: ${formatQty(value)} м`);
+  const holeLines = (sketch.holes || []).map((hole, index) => `${index + 1}. ${holeLabel(hole)} (${Math.round(hole.x)}, ${Math.round(hole.y)})`);
+  const warningLines = (sketch.warnings || []).map((warning) => `- ${warning}`);
+
+  const sections = [
+    [
+      `Заявка монтажника: ${request.id}`,
+      `Менеджер: ${request.manager?.name || "не выбран"}`,
+      `Статус: ${STATUS_LABELS[request.status] || request.status || "Новый"}`
+    ],
+    [
+      "Монтажник",
+      `Имя: ${installer.name || "не указано"}`,
+      `Телефон: ${installer.phone || "не указан"}`
+    ],
+    [
+      "Материал",
+      material.title || "не выбран",
+      material.price ? `Цена: ${formatMoney(material.price)} / ${material.unit || "шт"}` : "Цена: по запросу"
+    ],
+    [
+      "Объект",
+      `Адрес: ${object.address || "не указан"}`,
+      object.area ? `Площадь: ${formatQty(object.area)} м²` : "",
+      object.perimeter ? `Периметр: ${formatQty(object.perimeter)} м` : ""
+    ],
+    [
+      "Получение",
+      `Способ: ${method}`,
+      fulfillment.deliveryAddress ? `Адрес доставки: ${fulfillment.deliveryAddress}` : "",
+      formatReadyWindow(fulfillment) ? `Готовность: ${formatReadyWindow(fulfillment)}` : ""
+    ],
+    [
+      "Чертеж",
+      `Точек: ${Array.isArray(sketch.points) ? sketch.points.length : 0}`,
+      dimensionLines.length ? `Стороны:\n${dimensionLines.join("\n")}` : "",
+      diagonalLines.length ? `Диагонали:\n${diagonalLines.join("\n")}` : "",
+      holeLines.length ? `Отверстия:\n${holeLines.join("\n")}` : "",
+      sketch.aiDraft ? `AI-черновик${sketch.aiConfidence ? `, уверенность ${Math.round(sketch.aiConfidence * 100)}%` : ""}` : "",
+      sketch.note ? `Заметки: ${sketch.note}` : "",
+      warningLines.length ? `Проверить:\n${warningLines.join("\n")}` : "",
+      drawingUrl ? `SVG: ${drawingUrl}` : "",
+      photoUrl ? `Фото: ${photoUrl}` : ""
+    ],
+    object.comment ? ["Комментарий", object.comment] : [],
+    [`Создан: ${formatKyrgyzDateTime(request.createdAt)} Кыргызстан`]
+  ];
+
+  return sections
+    .map((section) => section.filter(Boolean))
+    .filter((section) => section.length)
+    .map((section) => section.join("\n"))
+    .join(`\n${MESSAGE_SEPARATOR}\n`);
+}
+
 function formatReadyWindow(fulfillment = {}) {
   if (fulfillment.readyAt) return `${formatKyrgyzDateTime(fulfillment.readyAt)} Кыргызстан`;
   if (fulfillment.readyDate && fulfillment.readyTime) return `${fulfillment.readyDate} ${fulfillment.readyTime} Кыргызстан`;
@@ -1312,6 +2056,83 @@ async function getNotificationChatIds() {
   return [...chatIds];
 }
 
+async function notifyInstallerManagers(request) {
+  if (!ENABLE_TELEGRAM_BOT || !TELEGRAM_BOT_TOKEN) return;
+  const chatIds = await getManagerChatIds(request.manager?.id);
+  const targetChatIds = chatIds.length ? chatIds : [...TELEGRAM_ADMINS];
+  if (!targetChatIds.length) return;
+
+  const prefix = chatIds.length
+    ? "Новая заявка монтажника"
+    : "Новая заявка монтажника\nМенеджер еще не привязан в боте, поэтому заявка пришла администраторам";
+  const message = `${prefix}\n${MESSAGE_SEPARATOR}\n${formatInstallerRequest(request)}`;
+  for (const chatId of targetChatIds) {
+    await sendMessage(chatId, message);
+    await sendInstallerRequestFiles(chatId, request);
+  }
+}
+
+async function sendInstallerRequestFiles(chatId, request) {
+  const drawingPath = uploadUrlToLocalPath(request.sketchDrawing?.url);
+  if (drawingPath) {
+    await sendTelegramDocument(chatId, drawingPath, `Чертеж ${request.id}: стороны подписаны в метрах`).catch((error) => {
+      console.error("Cannot send generated drawing:", error.message);
+    });
+  }
+
+  const photoPath = uploadUrlToLocalPath(request.sketchPhoto?.url);
+  if (photoPath) {
+    await sendTelegramDocument(chatId, photoPath, `Фото с объекта ${request.id}`).catch((error) => {
+      console.error("Cannot send sketch photo:", error.message);
+    });
+  }
+}
+
+function uploadUrlToLocalPath(url) {
+  if (!url || !String(url).startsWith("/uploads/")) return "";
+  const localPath = path.normalize(path.join(UPLOAD_DIR, decodeURIComponent(String(url).slice("/uploads/".length))));
+  if (!isInsideDirectory(UPLOAD_DIR, localPath)) return "";
+  return fs.existsSync(localPath) ? localPath : "";
+}
+
+async function getManagerChatIds(managerId) {
+  if (!managerId) return [];
+  const bindings = await readJson(MANAGER_BINDINGS_FILE, []);
+  const chatIds = new Set();
+  for (const binding of bindings) {
+    if (binding.managerId === managerId && binding.chatId) chatIds.add(String(binding.chatId));
+  }
+  return [...chatIds];
+}
+
+async function sendManagerPanel(chatId, prefix, managerId) {
+  const manager = TELEGRAM_MANAGERS.find((item) => item.id === managerId);
+  return sendMessage(
+    chatId,
+    `${prefix}\n\nПанель менеджера: ${manager?.name || "менеджер"}.`,
+    managerKeyboard()
+  );
+}
+
+function managerKeyboard() {
+  return {
+    keyboard: [[{ text: "📐 Заявки монтажников" }], [{ text: "🚪 Выйти" }]],
+    resize_keyboard: true
+  };
+}
+
+async function sendInstallerRequests(chatId, managerId) {
+  const requests = await readJson(INSTALLER_REQUESTS_FILE, []);
+  const ownRequests = requests.filter((request) => request.manager?.id === managerId);
+  if (!ownRequests.length) {
+    return sendMessage(chatId, "Заявок монтажников пока нет.", managerKeyboard());
+  }
+
+  for (const request of ownRequests.slice(0, 8)) {
+    await sendMessage(chatId, formatInstallerRequest(request), managerKeyboard());
+  }
+}
+
 async function sendAdminPanel(chatId, prefix = "Админ-панель Линии Роста") {
   return sendMessage(
     chatId,
@@ -1346,11 +2167,50 @@ async function sendMessage(chatId, textValue, replyMarkup) {
   });
 }
 
+async function sendTelegramDocument(chatId, filePath, caption = "") {
+  const ext = path.extname(filePath).toLowerCase();
+  const type = {
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp"
+  }[ext] || "application/octet-stream";
+  return tgMultipart(
+    "sendDocument",
+    {
+      chat_id: chatId,
+      caption: caption.slice(0, 1000)
+    },
+    {
+      field: "document",
+      filename: path.basename(filePath),
+      type,
+      buffer: await fs.promises.readFile(filePath)
+    }
+  );
+}
+
 async function tgApi(method, body) {
   const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
+  });
+  const data = await response.json();
+  if (!data.ok) throw new Error(data.description || `Telegram ${method} failed`);
+  return data;
+}
+
+async function tgMultipart(method, fields, file) {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields || {})) {
+    if (value !== undefined && value !== null && value !== "") form.append(key, String(value));
+  }
+  form.append(file.field, new Blob([file.buffer], { type: file.type }), file.filename);
+  const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`, {
+    method: "POST",
+    body: form
   });
   const data = await response.json();
   if (!data.ok) throw new Error(data.description || `Telegram ${method} failed`);

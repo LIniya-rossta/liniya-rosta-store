@@ -1,4 +1,4 @@
-const routes = new Set(["/", "/catalog", "/cart", "/checkout", "/success", "/measure"]);
+const routes = new Set(["/", "/catalog", "/cart", "/checkout", "/success", "/measure", "/installer"]);
 const money = new Intl.NumberFormat("ru-RU");
 const KYRGYZ_TIME_ZONE = "Asia/Bishkek";
 const previewProducts = [
@@ -79,7 +79,12 @@ const state = {
   search: "",
   cart: loadCart(),
   lastOrder: loadLastOrder(),
-  theme: "dark"
+  theme: "dark",
+  managerOptions: [],
+  managersLoading: false,
+  managersLoaded: false,
+  installerSketch: createDefaultSketch(),
+  installerPhoto: null
 };
 
 const elements = {
@@ -140,6 +145,7 @@ function renderRoute() {
   if (route === "/checkout") renderCheckout();
   if (route === "/success") renderSuccess();
   if (route === "/measure") renderMeasure();
+  if (route === "/installer") renderInstaller();
 
   requestAnimationFrame(() => {
     observeReveal();
@@ -277,14 +283,14 @@ function renderCheckout() {
             <label><input type="radio" name="method" value="pickup"> Самовывоз</label>
           </fieldset>
 
-          <div class="ready-field ready-date-field">
+          <div class="ready-field ready-date-field" data-ready-date-field>
             <span>Дата готовности</span>
-            <button class="ready-trigger" type="button" id="readyDateButton" aria-expanded="false" aria-controls="readyCalendar">
-              <strong id="readyDateLabel">${escapeHtml(formatReadyDateLabel(ready.date))}</strong>
+            <button class="ready-trigger" type="button" id="readyDateButton" aria-expanded="false" aria-controls="readyCalendar" data-ready-date-button>
+              <strong id="readyDateLabel" data-ready-date-label>${escapeHtml(formatReadyDateLabel(ready.date))}</strong>
               <i aria-hidden="true"></i>
             </button>
             <input name="readyDate" type="hidden" value="${ready.date}" data-ready-date>
-            <div class="ready-calendar" id="readyCalendar" hidden>
+            <div class="ready-calendar" id="readyCalendar" data-ready-calendar hidden>
               ${calendarTemplate(ready.date, ready.date)}
             </div>
           </div>
@@ -292,7 +298,7 @@ function renderCheckout() {
             <span>Время, Кыргызстан</span>
             <div class="ready-time-control">
               <button type="button" data-time-step="-15" aria-label="Уменьшить время">−</button>
-              <strong id="readyTimeLabel">${escapeHtml(ready.time)}</strong>
+              <strong id="readyTimeLabel" data-ready-time-label>${escapeHtml(ready.time)}</strong>
               <button type="button" data-time-step="15" aria-label="Увеличить время">+</button>
             </div>
             <input name="readyTime" type="hidden" value="${ready.time}" data-ready-time>
@@ -346,6 +352,118 @@ function renderMeasure() {
   `;
   bindPhoneInputs();
   document.getElementById("measureForm")?.addEventListener("submit", submitMeasure);
+}
+
+function renderInstaller() {
+  const ready = kyrgyzInputDateTime();
+  const materials = installerMaterials();
+
+  elements.app.innerHTML = `
+    <section class="installer-page page-section">
+      <div class="shop-title reveal">
+        <div>
+          <span class="overline">Монтажникам</span>
+          <h1>Чертеж и заявка на полотно</h1>
+          <p>Выберите материал, менеджера и отправьте замер напрямую в Telegram.</p>
+        </div>
+        <a class="btn btn-soft" href="/catalog" data-link>Каталог</a>
+      </div>
+
+      <div class="installer-workspace reveal">
+        <section class="checkout-card sketch-card">
+          <div class="panel-head">
+            <div>
+              <span class="overline">Чертеж</span>
+              <h2>Форма потолка</h2>
+            </div>
+            <div class="sketch-actions">
+              <button type="button" data-sketch-reset>Сброс</button>
+              <button type="button" data-sketch-undo>Назад</button>
+            </div>
+          </div>
+          <div class="sketch-board" id="sketchBoard">
+            ${sketchTemplate()}
+          </div>
+          <div class="sketch-meta" id="sketchMeta">
+            ${sketchMetaTemplate()}
+          </div>
+          <div class="sketch-dimensions" id="sketchDimensions">
+            ${sketchDimensionsTemplate()}
+          </div>
+          <label class="sketch-upload">
+            <span>Фото чертежа</span>
+            <input type="file" accept="image/png,image/jpeg,image/webp" id="installerPhoto">
+            <strong id="installerPhotoLabel">Прикрепить фото</strong>
+          </label>
+          <div class="photo-preview" id="installerPhotoPreview"></div>
+          <button class="btn btn-soft full" type="button" data-ai-draft>Собрать черновик по фото</button>
+        </section>
+
+        <form class="checkout-card checkout-form installer-form" id="installerForm">
+          <label><span>Имя монтажника</span><input name="name" required autocomplete="name" placeholder="Ваше имя"></label>
+          <label><span>Телефон</span><input name="phone" required autocomplete="tel" inputmode="tel" value="+996 " placeholder="+996 ..." data-phone-autocode="+996 "></label>
+          <label class="full"><span>Адрес объекта</span><input name="objectAddress" required autocomplete="street-address" placeholder="Район, улица, дом"></label>
+          <label>
+            <span>Материал</span>
+            <select name="materialId" required>
+              ${materials.map((product) => `<option value="${escapeHtml(product.id)}">${escapeHtml(product.title)} · ${product.price ? `${formatMoney(product.price)} / ${product.unit || "шт"}` : "цена по запросу"}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Менеджер</span>
+            <select name="managerId" required>
+              ${managerOptionsTemplate()}
+            </select>
+          </label>
+          <label><span>Площадь, м²</span><input name="area" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Например 42.5"></label>
+          <label><span>Периметр, м</span><input name="perimeter" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Например 28.4"></label>
+
+          <fieldset>
+            <legend>Получение</legend>
+            <label><input type="radio" name="method" value="delivery" checked> Доставка</label>
+            <label><input type="radio" name="method" value="pickup"> Самовывоз</label>
+          </fieldset>
+
+          <label class="full" id="installerDeliveryAddressField"><span>Адрес доставки</span><input name="deliveryAddress" required placeholder="Куда доставить готовое полотно"></label>
+
+          <div class="ready-field ready-date-field" data-ready-date-field>
+            <span>Дата готовности</span>
+            <button class="ready-trigger" type="button" aria-expanded="false" data-ready-date-button>
+              <strong data-ready-date-label>${escapeHtml(formatReadyDateLabel(ready.date))}</strong>
+              <i aria-hidden="true"></i>
+            </button>
+            <input name="readyDate" type="hidden" value="${ready.date}" data-ready-date>
+            <div class="ready-calendar" data-ready-calendar hidden>
+              ${calendarTemplate(ready.date, ready.date)}
+            </div>
+          </div>
+          <div class="ready-field ready-time-field">
+            <span>Время, Кыргызстан</span>
+            <div class="ready-time-control">
+              <button type="button" data-time-step="-15" aria-label="Уменьшить время">−</button>
+              <strong data-ready-time-label>${escapeHtml(ready.time)}</strong>
+              <button type="button" data-time-step="15" aria-label="Увеличить время">+</button>
+            </div>
+            <input name="readyTime" type="hidden" value="${ready.time}" data-ready-time>
+          </div>
+
+          <label class="full"><span>Комментарий</span><textarea name="comment" rows="4" placeholder="Ниши, трубы, углы, пожелания по доставке"></textarea></label>
+          <button class="btn btn-primary full" type="submit">Отправить менеджеру</button>
+          <p class="form-note full" id="installerNote"></p>
+        </form>
+      </div>
+    </section>
+  `;
+
+  if (!state.managersLoaded && !state.managersLoading) loadManagers().then(() => {
+    if (normalizePath(window.location.pathname) === "/installer") renderInstaller();
+  });
+  bindPhoneInputs();
+  bindReadyControls("installerForm");
+  bindInstallerFulfillmentControls();
+  bindInstallerSketch();
+  bindInstallerPhoto();
+  document.getElementById("installerForm")?.addEventListener("submit", submitInstallerRequest);
 }
 
 function renderSuccess() {
@@ -558,6 +676,183 @@ function contactsSection() {
   `;
 }
 
+function installerMaterials() {
+  const products = getStoreProducts().filter((product) => product.active !== false);
+  return products.sort((a, b) => installerMaterialScore(b) - installerMaterialScore(a));
+}
+
+function installerMaterialScore(product) {
+  const text = `${product.title || ""} ${product.category || ""} ${product.unit || ""}`.toLowerCase();
+  if (text.includes("плен") || text.includes("полотн")) return 3;
+  if (text.includes("м²") || text.includes("м2") || text.includes("кв")) return 2;
+  if (text.includes("проф") || text.includes("багет")) return 1;
+  return 0;
+}
+
+function managerOptionsTemplate() {
+  if (state.managerOptions.length) {
+    return state.managerOptions
+      .map((manager) => `<option value="${escapeHtml(manager.id)}">${escapeHtml(manager.name)}</option>`)
+      .join("");
+  }
+  if (state.managersLoaded) return `<option value="">Менеджеры не настроены</option>`;
+  return `<option value="">Менеджеры загружаются</option>`;
+}
+
+async function loadManagers() {
+  state.managersLoading = true;
+  try {
+    const response = await fetch("/api/managers/public");
+    const data = await response.json();
+    state.managerOptions = Array.isArray(data.managers) ? data.managers : [];
+  } catch {
+    toast("Менеджеры временно не загрузились.");
+  } finally {
+    state.managersLoading = false;
+    state.managersLoaded = true;
+  }
+}
+
+function createDefaultSketch() {
+  return {
+    points: [
+      { label: "A", x: 120, y: 90 },
+      { label: "B", x: 520, y: 90 },
+      { label: "C", x: 520, y: 330 },
+      { label: "D", x: 120, y: 330 }
+    ],
+    dimensions: {},
+    diagonals: {},
+    holes: [],
+    aiDraft: false
+  };
+}
+
+function sketchTemplate() {
+  const points = state.installerSketch.points;
+  const holes = state.installerSketch.holes || [];
+  const pointString = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const edgeLabels = sketchEdges(points).map((edge) => sketchTextLabel(edge.midpoint, edge.key, state.installerSketch.dimensions[edge.key], "sketch-size-label")).join("");
+  const diagonals = sketchDiagonals(points);
+  const diagonalLines = diagonals.map((diagonal) => {
+    const value = state.installerSketch.diagonals[diagonal.key];
+    if (!value) return "";
+    return `
+      <line class="sketch-diagonal" x1="${diagonal.from.x}" y1="${diagonal.from.y}" x2="${diagonal.to.x}" y2="${diagonal.to.y}"></line>
+      ${sketchTextLabel(diagonal.midpoint, diagonal.key, value, "sketch-size-label is-diagonal")}
+    `;
+  }).join("");
+  const circles = points.map((point, index) => `
+    <g class="sketch-point" data-sketch-point="${index}">
+      <circle cx="${point.x}" cy="${point.y}" r="13"></circle>
+      <text x="${point.x}" y="${point.y + 5}">${escapeHtml(point.label)}</text>
+    </g>
+  `).join("");
+
+  return `
+    <svg class="sketch-svg" viewBox="0 0 640 420" role="img" aria-label="Чертеж потолка">
+      <defs>
+        <linearGradient id="sketchLine" x1="0" x2="1">
+          <stop offset="0" stop-color="#63e6ff"></stop>
+          <stop offset="1" stop-color="#f3dca8"></stop>
+        </linearGradient>
+      </defs>
+      <rect x="1" y="1" width="638" height="418" rx="30"></rect>
+      ${points.length >= 3 ? `<polygon points="${pointString}"></polygon>` : ""}
+      ${points.length >= 2 ? `<polyline points="${pointString}${points.length >= 3 ? ` ${points[0].x},${points[0].y}` : ""}"></polyline>` : ""}
+      ${diagonalLines}
+      ${edgeLabels}
+      ${holes.map((hole) => sketchHoleTemplate(hole)).join("")}
+      ${circles}
+    </svg>
+  `;
+}
+
+function sketchHoleTemplate(hole) {
+  const radius = hole.type === "lamp" ? 19 : hole.type === "spot" ? 11 : 9;
+  return `
+    <g class="sketch-hole is-${escapeHtml(hole.type || "other")}">
+      <circle cx="${escapeHtml(hole.x)}" cy="${escapeHtml(hole.y)}" r="${radius}"></circle>
+      <text x="${escapeHtml(hole.x)}" y="${escapeHtml(Number(hole.y || 0) + radius + 17)}">${escapeHtml(hole.label || holeTypeLabel(hole.type))}</text>
+    </g>
+  `;
+}
+
+function holeTypeLabel(type) {
+  return {
+    pipe: "Труба",
+    lamp: "Люстра",
+    spot: "Точка",
+    other: "Отверстие"
+  }[type] || "Отверстие";
+}
+
+function sketchTextLabel(point, key, value, className) {
+  const label = value ? `${key}: ${formatQty(value)} м` : key;
+  const width = Math.max(76, label.length * 8 + 20);
+  return `
+    <g class="${className}">
+      <rect x="${point.x - width / 2}" y="${point.y - 15}" width="${width}" height="30" rx="12"></rect>
+      <text x="${point.x}" y="${point.y + 5}">${escapeHtml(label)}</text>
+    </g>
+  `;
+}
+
+function sketchMetaTemplate() {
+  const stats = sketchStats(state.installerSketch.points);
+  const holesCount = (state.installerSketch.holes || []).length;
+  return `
+    <span>${state.installerSketch.points.length} точки</span>
+    ${holesCount ? `<span>${holesCount} отверстий</span>` : ""}
+    <span>Контур: ${formatQty(stats.perimeter)} усл. м</span>
+    <span>Площадь: ${formatQty(stats.area)} усл. м²</span>
+  `;
+}
+
+function sketchDimensionsTemplate() {
+  const points = state.installerSketch.points;
+  const edges = sketchEdges(points);
+  const diagonals = sketchDiagonals(points).slice(0, 8);
+  return `
+    <div class="dimension-group">
+      <strong>Точные стороны</strong>
+      <div class="dimension-grid">
+        ${edges.map((edge) => dimensionInput(edge, "dimension")).join("")}
+      </div>
+    </div>
+    <div class="dimension-group">
+      <strong>Диагонали</strong>
+      <div class="dimension-grid">
+        ${diagonals.map((diagonal) => dimensionInput(diagonal, "diagonal")).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function dimensionInput(item, type) {
+  const store = type === "diagonal" ? state.installerSketch.diagonals : state.installerSketch.dimensions;
+  const value = store[item.key] || "";
+  return `
+    <div class="dimension-item">
+      <label>
+        <span>${escapeHtml(item.key)}</span>
+        <input
+          type="number"
+          min="0.01"
+          step="0.01"
+          inputmode="decimal"
+          enterkeyhint="next"
+          value="${escapeHtml(inputQtyValue(value))}"
+          placeholder="${escapeHtml(formatQty(item.estimated))}"
+          data-sketch-${type}="${escapeHtml(item.key)}"
+        >
+        <small>м</small>
+      </label>
+      ${type === "dimension" ? `<button type="button" data-insert-bend="${escapeHtml(item.key)}">изгиб</button>` : ""}
+    </div>
+  `;
+}
+
 function bindCatalogControls() {
   const searchInput = document.getElementById("searchInput");
   searchInput?.addEventListener("input", (event) => {
@@ -647,14 +942,14 @@ function bindFulfillmentControls() {
   updateAddressState();
 }
 
-function bindReadyControls() {
-  const form = document.getElementById("checkoutForm");
+function bindReadyControls(formId = "checkoutForm") {
+  const form = document.getElementById(formId);
   const dateInput = form?.querySelector("[data-ready-date]");
   const timeInput = form?.querySelector("[data-ready-time]");
-  const dateButton = document.getElementById("readyDateButton");
-  const dateLabel = document.getElementById("readyDateLabel");
-  const calendar = document.getElementById("readyCalendar");
-  const timeLabel = document.getElementById("readyTimeLabel");
+  const dateButton = form?.querySelector("[data-ready-date-button]") || document.getElementById("readyDateButton");
+  const dateLabel = form?.querySelector("[data-ready-date-label]") || document.getElementById("readyDateLabel");
+  const calendar = form?.querySelector("[data-ready-calendar]") || document.getElementById("readyCalendar");
+  const timeLabel = form?.querySelector("[data-ready-time-label]") || document.getElementById("readyTimeLabel");
   if (!form || !dateInput || !timeInput || !dateButton || !dateLabel || !calendar || !timeLabel) return;
 
   let displayDate = parseDateValue(dateInput.value);
@@ -706,11 +1001,246 @@ function bindReadyControls() {
 
   document.addEventListener("click", (event) => {
     if (calendar.hidden) return;
-    if (!event.target.closest(".ready-date-field")) closeCalendar();
+    if (!event.target.closest("[data-ready-date-field]")) closeCalendar();
   });
 
   renderCalendar();
   setSelectedTime(timeInput.value);
+}
+
+function bindInstallerFulfillmentControls() {
+  const form = document.getElementById("installerForm");
+  const addressField = document.getElementById("installerDeliveryAddressField");
+  const addressInput = form?.elements.deliveryAddress;
+  if (!form || !addressField || !addressInput) return;
+
+  const updateAddressState = () => {
+    const method = new FormData(form).get("method");
+    const isPickup = method === "pickup";
+    addressField.classList.toggle("is-hidden", isPickup);
+    addressInput.required = !isPickup;
+    addressInput.disabled = isPickup;
+    if (isPickup) addressInput.value = "";
+  };
+
+  form.querySelectorAll('input[name="method"]').forEach((input) => {
+    input.addEventListener("change", updateAddressState);
+  });
+  updateAddressState();
+}
+
+function bindInstallerSketch() {
+  const board = document.getElementById("sketchBoard");
+  const meta = document.getElementById("sketchMeta");
+  const dimensions = document.getElementById("sketchDimensions");
+  if (!board) return;
+  let dragIndex = null;
+  let dragMoved = false;
+  let suppressNextClick = false;
+
+  const renderSketch = () => {
+    normalizeSketchDimensionState();
+    board.innerHTML = sketchTemplate();
+    if (meta) meta.innerHTML = sketchMetaTemplate();
+    if (dimensions) dimensions.innerHTML = sketchDimensionsTemplate();
+    bindSketchDimensionInputs();
+  };
+
+  board.addEventListener("click", (event) => {
+    if (suppressNextClick) {
+      suppressNextClick = false;
+      return;
+    }
+    const pointNode = event.target.closest("[data-sketch-point]");
+    const labelNode = event.target.closest(".sketch-size-label");
+    if (pointNode) return;
+    const svg = event.target.closest(".sketch-svg");
+    if (!svg || state.installerSketch.points.length >= 24) return;
+    const point = pointerToSketchPoint(svg, event);
+    const edge = nearestSketchEdge(point);
+    if (!edge || edge.distance > 90) {
+      toast("Нажмите ближе к стороне или используйте кнопку изгиб.");
+      return;
+    }
+    insertBendOnEdge(edge.key, labelNode ? undefined : point);
+    state.installerSketch.aiDraft = false;
+    renderSketch();
+  });
+
+  board.addEventListener("pointerdown", (event) => {
+    const pointNode = event.target.closest("[data-sketch-point]");
+    const svg = event.target.closest(".sketch-svg");
+    if (!pointNode || !svg) return;
+    dragIndex = Number(pointNode.dataset.sketchPoint);
+    dragMoved = false;
+    board.setPointerCapture?.(event.pointerId);
+  });
+
+  board.addEventListener("pointermove", (event) => {
+    if (dragIndex === null) return;
+    const svg = board.querySelector(".sketch-svg");
+    if (!svg) return;
+    state.installerSketch.points[dragIndex] = {
+      ...state.installerSketch.points[dragIndex],
+      ...pointerToSketchPoint(svg, event)
+    };
+    dragMoved = true;
+    board.innerHTML = sketchTemplate();
+    if (meta) meta.innerHTML = sketchMetaTemplate();
+  });
+
+  board.addEventListener("pointerup", (event) => {
+    if (dragIndex !== null && dragMoved) {
+      suppressNextClick = true;
+      applySketchDimensionsToGeometry();
+      renderSketch();
+    }
+    dragIndex = null;
+    board.releasePointerCapture?.(event.pointerId);
+  });
+
+  document.querySelector("[data-sketch-reset]")?.addEventListener("click", () => {
+    state.installerSketch = createDefaultSketch();
+    renderSketch();
+  });
+
+  document.querySelector("[data-sketch-undo]")?.addEventListener("click", () => {
+    if (state.installerSketch.points.length > 0) state.installerSketch.points.pop();
+    renderSketch();
+  });
+
+  document.querySelector("[data-ai-draft]")?.addEventListener("click", async (event) => {
+    const note = document.getElementById("installerNote");
+    if (!state.installerPhoto) return setNote(note, "Сначала прикрепите фото чертежа.", true);
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "AI анализирует фото...";
+    setNote(note, "AI распознает контур, размеры и отверстия. Подождите немного.", false);
+    try {
+      const response = await fetch("/api/installer-ai-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo: state.installerPhoto })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "AI не смог распознать фото");
+      applyInstallerAiDraft(data.draft || {});
+      renderSketch();
+      const confidence = data.draft?.confidence ? ` Уверенность: ${Math.round(data.draft.confidence * 100)}%.` : "";
+      const warnings = data.draft?.warnings?.length ? ` Проверьте: ${data.draft.warnings.join("; ")}.` : "";
+      setNote(note, `AI-черновик готов.${confidence}${warnings}`, false);
+    } catch (error) {
+      setNote(note, error.message, true);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Собрать черновик по фото";
+    }
+  });
+
+  normalizeSketchDimensionState();
+  bindSketchDimensionInputs();
+}
+
+function applyInstallerAiDraft(draft) {
+  const points = Array.isArray(draft.points) && draft.points.length >= 3
+    ? draft.points.slice(0, 24).map((point, index) => clampSketchPoint({
+        label: String.fromCharCode(65 + index),
+        x: Number(point.x),
+        y: Number(point.y)
+      }))
+    : createDefaultSketch().points;
+
+  state.installerSketch = {
+    points,
+    dimensions: draft.dimensions && typeof draft.dimensions === "object" ? draft.dimensions : {},
+    diagonals: draft.diagonals && typeof draft.diagonals === "object" ? draft.diagonals : {},
+    holes: Array.isArray(draft.holes) ? draft.holes.map((hole) => ({
+      type: ["pipe", "lamp", "spot", "other"].includes(hole.type) ? hole.type : "other",
+      label: hole.label || holeTypeLabel(hole.type),
+      x: clampSketchPoint({ x: Number(hole.x), y: Number(hole.y) }).x,
+      y: clampSketchPoint({ x: Number(hole.x), y: Number(hole.y) }).y,
+      diameterCm: Number(hole.diameterCm || 0)
+    })) : [],
+    aiConfidence: Number(draft.confidence || 0),
+    warnings: Array.isArray(draft.warnings) ? draft.warnings : [],
+    note: draft.notes || "",
+    aiDraft: true
+  };
+
+  normalizeSketchDimensionState();
+  applySketchDimensionsToGeometry();
+}
+
+function bindSketchDimensionInputs() {
+  document.querySelectorAll("[data-sketch-dimension]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const value = parseDimension(input.value);
+      if (value) state.installerSketch.dimensions[input.dataset.sketchDimension] = value;
+      else delete state.installerSketch.dimensions[input.dataset.sketchDimension];
+      applySketchDimensionsToGeometry();
+      document.getElementById("sketchBoard").innerHTML = sketchTemplate();
+      document.getElementById("sketchMeta").innerHTML = sketchMetaTemplate();
+    });
+  });
+
+  document.querySelectorAll("[data-sketch-diagonal]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const value = parseDimension(input.value);
+      if (value) state.installerSketch.diagonals[input.dataset.sketchDiagonal] = value;
+      else delete state.installerSketch.diagonals[input.dataset.sketchDiagonal];
+      applySketchDimensionsToGeometry();
+      document.getElementById("sketchBoard").innerHTML = sketchTemplate();
+      document.getElementById("sketchMeta").innerHTML = sketchMetaTemplate();
+    });
+  });
+
+  document.querySelectorAll("[data-insert-bend]").forEach((button) => {
+    button.addEventListener("click", () => {
+      insertBendOnEdge(button.dataset.insertBend);
+      const board = document.getElementById("sketchBoard");
+      const meta = document.getElementById("sketchMeta");
+      const dimensions = document.getElementById("sketchDimensions");
+      if (board) board.innerHTML = sketchTemplate();
+      if (meta) meta.innerHTML = sketchMetaTemplate();
+      if (dimensions) dimensions.innerHTML = sketchDimensionsTemplate();
+      bindSketchDimensionInputs();
+    });
+  });
+}
+
+function bindInstallerPhoto() {
+  const input = document.getElementById("installerPhoto");
+  const label = document.getElementById("installerPhotoLabel");
+  const preview = document.getElementById("installerPhotoPreview");
+  const note = document.getElementById("installerNote");
+  input?.addEventListener("change", () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
+      input.value = "";
+      return setNote(note, "Фото должно быть PNG, JPG или WEBP.", true);
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      input.value = "";
+      return setNote(note, "Фото слишком большое. Загрузите файл до 4 МБ.", true);
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      state.installerPhoto = {
+        name: file.name,
+        type: file.type,
+        dataUrl: String(reader.result || "")
+      };
+      if (label) label.textContent = file.name;
+      if (preview) {
+        preview.innerHTML = `<img src="${escapeHtml(state.installerPhoto.dataUrl)}" alt="Фото чертежа">`;
+        preview.classList.add("has-image");
+      }
+      setNote(note, "Фото прикреплено.", false);
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 async function submitCheckout(event) {
@@ -775,6 +1305,76 @@ async function submitMeasure(event) {
     saveLastOrder(order);
     navigate(`/success?order=${encodeURIComponent(order.id)}`);
   });
+}
+
+async function submitInstallerRequest(event) {
+  event.preventDefault();
+  const note = document.getElementById("installerNote");
+  const form = new FormData(event.currentTarget);
+  const readyDate = form.get("readyDate");
+  const readyTime = form.get("readyTime");
+  const method = form.get("method");
+
+  if (!readyDate || !readyTime) return setNote(note, "Выберите дату и время готовности.", true);
+  if (isSundayDate(readyDate)) return setNote(note, "В воскресенье магазин не работает. Выберите другую дату.", true);
+  const missingDimensions = sketchEdges(state.installerSketch.points)
+    .filter((edge) => !Number(state.installerSketch.dimensions[edge.key]))
+    .map((edge) => edge.key);
+  if (missingDimensions.length) {
+    return setNote(note, `Введите точные размеры сторон: ${missingDimensions.join(", ")}.`, true);
+  }
+
+  const payload = {
+    installer: {
+      name: form.get("name"),
+      phone: form.get("phone")
+    },
+    managerId: form.get("managerId"),
+    materialId: form.get("materialId"),
+    object: {
+      address: form.get("objectAddress"),
+      area: form.get("area"),
+      perimeter: form.get("perimeter"),
+      comment: form.get("comment")
+    },
+    fulfillment: {
+      method,
+      deliveryAddress: method === "delivery" ? form.get("deliveryAddress") : "",
+      readyDate,
+      readyTime,
+      timeZone: KYRGYZ_TIME_ZONE
+    },
+    sketch: {
+      points: state.installerSketch.points,
+      dimensions: state.installerSketch.dimensions,
+      diagonals: state.installerSketch.diagonals,
+      holes: state.installerSketch.holes || [],
+      area: form.get("area"),
+      perimeter: form.get("perimeter"),
+      aiConfidence: state.installerSketch.aiConfidence || 0,
+      warnings: state.installerSketch.warnings || [],
+      aiDraft: state.installerSketch.aiDraft,
+      note: state.installerSketch.note || (state.installerPhoto ? "К заявке прикреплено фото чертежа." : "")
+    },
+    sketchPhoto: state.installerPhoto
+  };
+
+  setNote(note, "Отправляем заявку менеджеру...", false);
+  try {
+    const response = await fetch("/api/installer-requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Не удалось отправить заявку");
+    state.installerPhoto = null;
+    state.installerSketch = createDefaultSketch();
+    saveLastOrder({ id: data.request?.id });
+    navigate(`/success?order=${encodeURIComponent(data.request?.id || "")}`);
+  } catch (error) {
+    setNote(note, error.message, true);
+  }
 }
 
 async function submitOrder(payload, note, onSuccess) {
@@ -915,7 +1515,283 @@ function formatQty(value) {
   return Number.isInteger(number) ? String(number) : String(Math.round(number * 10) / 10).replace(".", ",");
 }
 
+function sketchEdges(points) {
+  if (!Array.isArray(points) || points.length < 2) return [];
+  return points.map((point, index) => {
+    const next = points[(index + 1) % points.length];
+    return {
+      key: `${point.label}-${next.label}`,
+      index,
+      fromIndex: index,
+      toIndex: (index + 1) % points.length,
+      from: point,
+      to: next,
+      midpoint: {
+        x: Math.round((point.x + next.x) / 2),
+        y: Math.round((point.y + next.y) / 2)
+      },
+      estimated: Math.round((Math.hypot(next.x - point.x, next.y - point.y) / 20) * 100) / 100
+    };
+  });
+}
+
+function sketchDiagonals(points) {
+  if (!Array.isArray(points) || points.length < 4) return [];
+  const diagonals = [];
+  for (let fromIndex = 0; fromIndex < points.length; fromIndex += 1) {
+    for (let toIndex = fromIndex + 1; toIndex < points.length; toIndex += 1) {
+      const isNeighbor = toIndex === fromIndex + 1 || (fromIndex === 0 && toIndex === points.length - 1);
+      if (isNeighbor) continue;
+      const from = points[fromIndex];
+      const to = points[toIndex];
+      diagonals.push({
+        key: `${from.label}-${to.label}`,
+        fromIndex,
+        toIndex,
+        from,
+        to,
+        midpoint: {
+          x: Math.round((from.x + to.x) / 2),
+          y: Math.round((from.y + to.y) / 2)
+        },
+        estimated: Math.round((Math.hypot(to.x - from.x, to.y - from.y) / 20) * 100) / 100
+      });
+    }
+  }
+  return diagonals;
+}
+
+function insertBendOnEdge(edgeKey, explicitPoint) {
+  const oldPoints = state.installerSketch.points;
+  const oldEdges = sketchEdges(oldPoints);
+  const edge = oldEdges.find((item) => item.key === edgeKey);
+  if (!edge || oldPoints.length >= 24) return;
+
+  const point = explicitPoint || offsetPointFromEdge(edge, oldPoints);
+  const nextPoints = [
+    ...oldPoints.slice(0, edge.index + 1),
+    { label: "", ...point },
+    ...oldPoints.slice(edge.index + 1)
+  ];
+  relabelSketchPoints(nextPoints);
+  const oldDimensions = { ...(state.installerSketch.dimensions || {}) };
+  state.installerSketch.points = nextPoints;
+  state.installerSketch.dimensions = remapDimensionsAfterInsert(oldEdges, edge.index, oldDimensions);
+  state.installerSketch.diagonals = {};
+  state.installerSketch.aiDraft = false;
+  applySketchDimensionsToGeometry();
+}
+
+function offsetPointFromEdge(edge, points) {
+  const midpoint = edge.midpoint;
+  const center = sketchCentroid(points);
+  const dx = edge.to.x - edge.from.x;
+  const dy = edge.to.y - edge.from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const normal = { x: -dy / length, y: dx / length };
+  const optionA = clampSketchPoint({
+    x: midpoint.x + normal.x * 58,
+    y: midpoint.y + normal.y * 58
+  });
+  const optionB = clampSketchPoint({
+    x: midpoint.x - normal.x * 58,
+    y: midpoint.y - normal.y * 58
+  });
+  return distance(optionA, center) >= distance(optionB, center) ? optionA : optionB;
+}
+
+function remapDimensionsAfterInsert(oldEdges, insertIndex, oldDimensions) {
+  const newEdges = sketchEdges(state.installerSketch.points);
+  const nextDimensions = {};
+  oldEdges.forEach((oldEdge, oldIndex) => {
+    const value = oldDimensions[oldEdge.key];
+    if (!value) return;
+    if (oldIndex < insertIndex) {
+      nextDimensions[newEdges[oldIndex].key] = value;
+    } else if (oldIndex === insertIndex) {
+      nextDimensions[newEdges[oldIndex].key] = Math.round((value / 2) * 100) / 100;
+      nextDimensions[newEdges[oldIndex + 1].key] = Math.round((value / 2) * 100) / 100;
+    } else if (newEdges[oldIndex + 1]) {
+      nextDimensions[newEdges[oldIndex + 1].key] = value;
+    }
+  });
+  return nextDimensions;
+}
+
+function nearestSketchEdge(point) {
+  return sketchEdges(state.installerSketch.points)
+    .map((edge) => ({
+      ...edge,
+      distance: distanceToSegment(point, edge.from, edge.to)
+    }))
+    .sort((a, b) => a.distance - b.distance)[0];
+}
+
+function applySketchDimensionsToGeometry() {
+  normalizeSketchDimensionState();
+  const points = state.installerSketch.points.map((point) => ({ ...point }));
+  if (points.length < 2) return;
+
+  const constraints = [
+    ...sketchEdges(points)
+      .filter((edge) => Number(state.installerSketch.dimensions[edge.key]) > 0)
+      .map((edge) => ({
+        fromIndex: edge.fromIndex,
+        toIndex: edge.toIndex,
+        meters: Number(state.installerSketch.dimensions[edge.key])
+      })),
+    ...sketchDiagonals(points)
+      .filter((diagonal) => Number(state.installerSketch.diagonals[diagonal.key]) > 0)
+      .map((diagonal) => ({
+        fromIndex: diagonal.fromIndex,
+        toIndex: diagonal.toIndex,
+        meters: Number(state.installerSketch.diagonals[diagonal.key])
+      }))
+  ];
+  if (!constraints.length) return;
+
+  const pixelsPerMeter = sketchPixelsPerMeter(points, constraints);
+  for (let iteration = 0; iteration < 90; iteration += 1) {
+    for (const constraint of constraints) {
+      const from = points[constraint.fromIndex];
+      const to = points[constraint.toIndex];
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const current = Math.hypot(dx, dy) || 1;
+      const target = constraint.meters * pixelsPerMeter;
+      const ratio = (current - target) / current;
+      const moveX = dx * ratio * 0.42;
+      const moveY = dy * ratio * 0.42;
+      from.x += moveX;
+      from.y += moveY;
+      to.x -= moveX;
+      to.y -= moveY;
+    }
+  }
+
+  state.installerSketch.points = fitSketchPoints(points);
+  relabelSketchPoints(state.installerSketch.points);
+}
+
+function sketchPixelsPerMeter(points, constraints) {
+  const ratios = constraints
+    .map((constraint) => {
+      const from = points[constraint.fromIndex];
+      const to = points[constraint.toIndex];
+      const meters = Number(constraint.meters);
+      if (!meters) return 0;
+      return Math.hypot(to.x - from.x, to.y - from.y) / meters;
+    })
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+  const median = ratios.length ? ratios[Math.floor(ratios.length / 2)] : 58;
+  return Math.max(18, Math.min(110, median));
+}
+
+function fitSketchPoints(points) {
+  const bounds = sketchBounds(points);
+  const width = Math.max(1, bounds.maxX - bounds.minX);
+  const height = Math.max(1, bounds.maxY - bounds.minY);
+  const scale = Math.min(1.35, 520 / width, 320 / height);
+  const offsetX = 320 - ((bounds.minX + bounds.maxX) / 2) * scale;
+  const offsetY = 210 - ((bounds.minY + bounds.maxY) / 2) * scale;
+  return points.map((point) => clampSketchPoint({
+    ...point,
+    x: point.x * scale + offsetX,
+    y: point.y * scale + offsetY
+  }));
+}
+
+function sketchBounds(points) {
+  return points.reduce((bounds, point) => ({
+    minX: Math.min(bounds.minX, point.x),
+    maxX: Math.max(bounds.maxX, point.x),
+    minY: Math.min(bounds.minY, point.y),
+    maxY: Math.max(bounds.maxY, point.y)
+  }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
+}
+
+function sketchCentroid(points) {
+  const total = points.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 });
+  const count = Math.max(1, points.length);
+  return { x: total.x / count, y: total.y / count };
+}
+
+function relabelSketchPoints(points) {
+  points.forEach((point, index) => {
+    point.label = String.fromCharCode(65 + index);
+  });
+}
+
+function clampSketchPoint(point) {
+  return {
+    ...point,
+    x: Math.max(28, Math.min(612, Math.round(point.x))),
+    y: Math.max(28, Math.min(392, Math.round(point.y)))
+  };
+}
+
+function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function distanceToSegment(point, from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const lengthSquared = dx * dx + dy * dy || 1;
+  const t = Math.max(0, Math.min(1, ((point.x - from.x) * dx + (point.y - from.y) * dy) / lengthSquared));
+  return Math.hypot(point.x - (from.x + t * dx), point.y - (from.y + t * dy));
+}
+
+function normalizeSketchDimensionState() {
+  state.installerSketch.dimensions = state.installerSketch.dimensions || {};
+  state.installerSketch.diagonals = state.installerSketch.diagonals || {};
+  const edgeKeys = new Set(sketchEdges(state.installerSketch.points).map((edge) => edge.key));
+  const diagonalKeys = new Set(sketchDiagonals(state.installerSketch.points).map((diagonal) => diagonal.key));
+  for (const key of Object.keys(state.installerSketch.dimensions)) {
+    if (!edgeKeys.has(key)) delete state.installerSketch.dimensions[key];
+  }
+  for (const key of Object.keys(state.installerSketch.diagonals)) {
+    if (!diagonalKeys.has(key)) delete state.installerSketch.diagonals[key];
+  }
+}
+
+function parseDimension(value) {
+  const number = Number(String(value || "").replace(",", "."));
+  if (!Number.isFinite(number) || number <= 0) return 0;
+  return Math.round(number * 100) / 100;
+}
+
+function pointerToSketchPoint(svg, event) {
+  const rect = svg.getBoundingClientRect();
+  return clampSketchPoint({
+    x: Math.max(24, Math.min(616, Math.round(((event.clientX - rect.left) / rect.width) * 640))),
+    y: Math.max(24, Math.min(396, Math.round(((event.clientY - rect.top) / rect.height) * 420)))
+  });
+}
+
+function sketchStats(points) {
+  if (!Array.isArray(points) || points.length < 2) return { area: 0, perimeter: 0 };
+  const perimeter = points.reduce((sum, point, index) => {
+    const next = points[(index + 1) % points.length];
+    if (!next) return sum;
+    const distance = Math.hypot(next.x - point.x, next.y - point.y) / 20;
+    return sum + distance;
+  }, 0);
+  const area = points.length < 3
+    ? 0
+    : Math.abs(points.reduce((sum, point, index) => {
+        const next = points[(index + 1) % points.length];
+        return sum + point.x * next.y - next.x * point.y;
+      }, 0)) / 2 / 400;
+  return {
+    area: Math.round(area * 10) / 10,
+    perimeter: Math.round(perimeter * 10) / 10
+  };
+}
+
 function inputQtyValue(value) {
+  if (value === "" || value === null || value === undefined) return "";
   const number = Number(value || 0);
   return Number.isInteger(number) ? String(number) : String(Math.round(number * 10) / 10);
 }
@@ -978,7 +1854,14 @@ function observeReveal() {
       }
     }
   }, { threshold: 0.12 });
-  nodes.forEach((node) => observer.observe(node));
+  nodes.forEach((node) => {
+    const rect = node.getBoundingClientRect();
+    if (rect.top < window.innerHeight && rect.bottom > 0) {
+      node.classList.add("is-visible");
+      return;
+    }
+    observer.observe(node);
+  });
 }
 
 function navigate(path) {

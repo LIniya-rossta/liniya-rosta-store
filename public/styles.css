@@ -61,9 +61,15 @@ a {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
   letter-spacing: 0;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.68;
 }
 
 button {
@@ -642,6 +648,7 @@ h3 {
 .cart-page,
 .checkout-page,
 .measure-page,
+.installer-page,
 .success-page {
   width: min(1760px, 100%);
   margin: 0 auto;
@@ -691,7 +698,8 @@ h3 {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -705,9 +713,21 @@ textarea {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   border-color: var(--cyan);
   box-shadow: 0 0 0 4px rgba(94, 231, 255, 0.16);
+}
+
+select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 19px) calc(50% - 3px), calc(100% - 13px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 42px;
 }
 
 .ready-field {
@@ -1529,6 +1549,304 @@ textarea:focus {
   line-height: 1.6;
 }
 
+.installer-page {
+  color: #ffffff;
+}
+
+.installer-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.95fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.sketch-card {
+  display: grid;
+  gap: 16px;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 20px;
+}
+
+.panel-head h2 {
+  margin-bottom: 0;
+  color: var(--ink);
+  font-size: 30px;
+}
+
+.sketch-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.sketch-actions button {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.sketch-board {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-lg);
+  min-height: 460px;
+  padding: 14px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    rgba(4, 11, 18, 0.52);
+  background-size: 34px 34px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  touch-action: none;
+}
+
+.sketch-svg {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  display: block;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.sketch-svg rect {
+  fill: rgba(6, 14, 22, 0.38);
+  stroke: rgba(255, 255, 255, 0.08);
+}
+
+.sketch-svg polygon {
+  fill: rgba(99, 230, 255, 0.08);
+  stroke: transparent;
+}
+
+.sketch-svg polyline {
+  fill: none;
+  stroke: url("#sketchLine");
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 14px rgba(99, 230, 255, 0.32));
+}
+
+.sketch-diagonal {
+  stroke: rgba(243, 220, 168, 0.54);
+  stroke-width: 3;
+  stroke-dasharray: 10 8;
+}
+
+.sketch-size-label rect {
+  fill: rgba(8, 14, 22, 0.86);
+  stroke: rgba(255, 255, 255, 0.16);
+}
+
+.sketch-size-label.is-diagonal rect {
+  fill: rgba(217, 173, 104, 0.86);
+}
+
+.sketch-size-label text {
+  fill: #ffffff;
+  font-size: 12px;
+  font-weight: 950;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.sketch-size-label.is-diagonal text {
+  fill: #07111a;
+}
+
+.sketch-hole circle {
+  fill: rgba(7, 17, 26, 0.9);
+  stroke: #ffffff;
+  stroke-width: 4;
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.26));
+}
+
+.sketch-hole.is-pipe circle {
+  stroke: var(--cyan);
+}
+
+.sketch-hole.is-lamp circle {
+  stroke: var(--gold-2);
+}
+
+.sketch-hole.is-spot circle {
+  stroke: #f6fbff;
+}
+
+.sketch-hole text {
+  fill: #ffffff;
+  font-size: 12px;
+  font-weight: 950;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.sketch-point circle {
+  fill: #07111a;
+  stroke: var(--gold-2);
+  stroke-width: 4;
+}
+
+.sketch-point text {
+  fill: #ffffff;
+  font-size: 13px;
+  font-weight: 950;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.sketch-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sketch-meta span {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 9px 11px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.sketch-dimensions {
+  display: grid;
+  gap: 16px;
+}
+
+.dimension-group {
+  display: grid;
+  gap: 10px;
+}
+
+.dimension-group > strong {
+  color: var(--steel);
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 9px;
+}
+
+.dimension-item {
+  min-height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 7px 9px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: var(--inner-glass);
+}
+
+.dimension-item label {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.dimension-item label span,
+.dimension-item label small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.dimension-item input {
+  height: 38px;
+  min-width: 0;
+  border: 0;
+  border-radius: 11px;
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  text-align: center;
+  font-weight: 950;
+}
+
+.dimension-item button {
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  padding: 7px 9px;
+  background: rgba(243, 220, 168, 0.14);
+  color: var(--gold-2);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.sketch-upload {
+  display: grid;
+  gap: 8px;
+}
+
+.sketch-upload input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sketch-upload span {
+  color: var(--steel);
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.sketch-upload strong {
+  min-height: 54px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+}
+
+.photo-preview {
+  display: none;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.photo-preview.has-image {
+  display: block;
+}
+
+.photo-preview img {
+  width: 100%;
+  max-height: 260px;
+  object-fit: cover;
+}
+
+.installer-form {
+  position: sticky;
+  top: 104px;
+}
+
 .success-page {
   width: 100vw;
   max-width: 100vw;
@@ -1925,6 +2243,7 @@ body[data-theme="light"] {
 body[data-theme="dark"] .hero,
 body[data-theme="dark"] .measure-promo,
 body[data-theme="dark"] .measure-page,
+body[data-theme="dark"] .installer-page,
 body[data-theme="dark"] .success-page {
   background:
     linear-gradient(115deg, rgba(99, 230, 255, 0.12), transparent 34%),
@@ -2016,6 +2335,7 @@ body[data-theme="light"] .product-tags span,
 body[data-theme="light"] .category-row button,
 body[data-theme="light"] input,
 body[data-theme="light"] textarea,
+body[data-theme="light"] select,
 body[data-theme="light"] .qty-control button,
 body[data-theme="light"] .card-qty-control {
   border-color: var(--line);
@@ -2090,6 +2410,7 @@ body[data-theme="dark"] .product-tags span,
 body[data-theme="dark"] .category-row button,
 body[data-theme="dark"] input,
 body[data-theme="dark"] textarea,
+body[data-theme="dark"] select,
 body[data-theme="dark"] .ready-trigger,
 body[data-theme="dark"] .ready-time-control,
 body[data-theme="dark"] .ready-calendar-head button,
@@ -2106,6 +2427,16 @@ body[data-theme="dark"] .card-qty-control {
 body[data-theme="dark"] input::placeholder,
 body[data-theme="dark"] textarea::placeholder {
   color: rgba(214, 227, 236, 0.58);
+}
+
+body[data-theme="dark"] select,
+body[data-theme="light"] select {
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 19px) calc(50% - 3px), calc(100% - 13px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
 }
 
 body[data-theme="dark"] .btn-soft {
@@ -2144,7 +2475,8 @@ body[data-theme="dark"] .summary-total {
 
   .hero,
   .cart-grid,
-  .checkout-grid {
+  .checkout-grid,
+  .installer-workspace {
     grid-template-columns: 1fr;
   }
 
@@ -2216,6 +2548,7 @@ body[data-theme="dark"] .summary-total {
   .contacts-section,
   .catalog-bar,
   .shop-title,
+  .panel-head,
   .section-title {
     grid-template-columns: 1fr;
     display: grid;
@@ -2473,7 +2806,8 @@ body[data-theme="dark"] .summary-total {
   .shop-page,
   .cart-page,
   .checkout-page,
-  .measure-page {
+  .measure-page,
+  .installer-page {
     padding-top: 148px;
   }
 
@@ -2483,8 +2817,43 @@ body[data-theme="dark"] .summary-total {
 
   .checkout-card,
   .review-card,
-  .empty-shop {
+  .empty-shop,
+  .sketch-card {
     padding: 18px;
+  }
+
+  .sketch-board {
+    min-height: 360px;
+    padding: 10px;
+  }
+
+  .sketch-svg {
+    min-height: 330px;
+  }
+
+  .dimension-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .dimension-item {
+    min-height: 48px;
+    padding: 6px 7px;
+    grid-template-columns: 1fr;
+  }
+
+  .dimension-item label {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .dimension-item input {
+    height: 34px;
+    font-size: 13px;
+  }
+
+  .dimension-item button {
+    min-height: 30px;
+    padding: 5px 7px;
   }
 
   .success-card {

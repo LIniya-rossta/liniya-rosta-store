@@ -35,10 +35,30 @@ services:
         sync: false
       - key: TELEGRAM_ADMIN_SESSION_HOURS
         value: "12"
+      - key: TELEGRAM_MANAGER_1_NAME
+        value: "Менеджер 1"
+      - key: TELEGRAM_MANAGER_1_PASSWORD
+        sync: false
+      - key: TELEGRAM_MANAGER_2_NAME
+        value: "Менеджер 2"
+      - key: TELEGRAM_MANAGER_2_PASSWORD
+        sync: false
+      - key: TELEGRAM_MANAGER_3_NAME
+        value: "Менеджер 3"
+      - key: TELEGRAM_MANAGER_3_PASSWORD
+        sync: false
+      - key: TELEGRAM_MANAGER_4_NAME
+        value: "Менеджер 4"
+      - key: TELEGRAM_MANAGER_4_PASSWORD
+        sync: false
       - key: TELEGRAM_WEBHOOK_SECRET
         generateValue: true
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_INSTALLER_AI_MODEL
+        value: gpt-5.6
       - key: COMPANY_WHATSAPP
         value: "996990883883"
       - key: COMPANY_PHONE_PRIMARY
