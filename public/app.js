@@ -1,7 +1,6 @@
 const routes = new Set(["/", "/catalog", "/cart", "/checkout", "/success", "/measure"]);
 const money = new Intl.NumberFormat("ru-RU");
 const KYRGYZ_TIME_ZONE = "Asia/Bishkek";
-
 const previewProducts = [
   {
     id: "preview-laminate",
@@ -79,7 +78,8 @@ const state = {
   category: "Все",
   search: "",
   cart: loadCart(),
-  lastOrder: loadLastOrder()
+  lastOrder: loadLastOrder(),
+  theme: "dark"
 };
 
 const elements = {
@@ -95,6 +95,7 @@ init();
 
 async function init() {
   elements.whatsappHeader.href = whatsAppLink("Здравствуйте! Пишу с сайта Линия Роста.");
+  applyTheme(state.theme);
   bindGlobalEvents();
   await loadProducts();
   renderRoute();
@@ -189,6 +190,7 @@ function renderHome() {
     </section>
 
     ${reviewsSection()}
+    ${measurePromo()}
     ${contactsSection()}
   `;
   bindProductButtons();
@@ -516,6 +518,22 @@ function reviewsSection() {
             </footer>
           </article>
         `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function measurePromo() {
+  return `
+    <section class="page-section measure-promo">
+      <div class="measure-promo-copy reveal">
+        <span class="overline">Замер онлайн</span>
+        <h2>Большой объект? Отправьте заявку отдельно от корзины</h2>
+        <p>Для площадей от 50 м² заявка оформляется отдельно от корзины. Это удобно для квартир, домов и коммерческих объектов.</p>
+        <a class="btn btn-primary" href="/measure" data-link>Заказать замер</a>
+      </div>
+      <div class="measure-promo-visual reveal" aria-hidden="true">
+        <span>50 м²+</span>
       </div>
     </section>
   `;
@@ -971,6 +989,11 @@ function navigate(path) {
 function normalizePath(path) {
   if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
   return path;
+}
+
+function applyTheme(theme) {
+  state.theme = "dark";
+  document.body.dataset.theme = state.theme;
 }
 
 function loadCart() {
