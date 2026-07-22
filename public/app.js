@@ -377,6 +377,9 @@ function renderInstaller() {
               <h2>Форма потолка</h2>
             </div>
             <div class="sketch-actions">
+              <button type="button" data-sketch-template="rectangle">Прямой</button>
+              <button type="button" data-sketch-template="lshape">Г-форма</button>
+              <button type="button" data-sketch-autofit>Выровнять</button>
               <button type="button" data-sketch-reset>Сброс</button>
               <button type="button" data-sketch-undo>Назад</button>
             </div>
@@ -724,6 +727,32 @@ function createDefaultSketch() {
     dimensions: {},
     diagonals: {},
     holes: [],
+    shapeType: "rectangle",
+    aiDraft: false
+  };
+}
+
+function createLShapeSketch() {
+  return {
+    points: [
+      { label: "A", x: 70, y: 70 },
+      { label: "B", x: 570, y: 70 },
+      { label: "C", x: 570, y: 350 },
+      { label: "D", x: 255, y: 350 },
+      { label: "E", x: 255, y: 145 },
+      { label: "F", x: 70, y: 145 }
+    ],
+    dimensions: {
+      "A-B": 3.45,
+      "B-C": 2.9,
+      "C-D": 2.2,
+      "D-E": 2.2,
+      "E-F": 1.2,
+      "F-A": 0.75
+    },
+    diagonals: {},
+    holes: [],
+    shapeType: "lshape",
     aiDraft: false
   };
 }
@@ -732,7 +761,7 @@ function sketchTemplate() {
   const points = state.installerSketch.points;
   const holes = state.installerSketch.holes || [];
   const pointString = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const edgeLabels = sketchEdges(points).map((edge) => sketchTextLabel(edge.midpoint, edge.key, state.installerSketch.dimensions[edge.key], "sketch-size-label")).join("");
+  const edgeLabels = sketchEdges(points).map((edge) => sketchEdgeLabel(edge, state.installerSketch.dimensions[edge.key])).join("");
   const diagonals = sketchDiagonals(points);
   const diagonalLines = diagonals.map((diagonal) => {
     const value = state.installerSketch.diagonals[diagonal.key];
@@ -787,6 +816,13 @@ function holeTypeLabel(type) {
   }[type] || "Отверстие";
 }
 
+function normalizeAiShapeType(shapeType, pointsCount) {
+  const value = String(shapeType || "").toLowerCase();
+  if (value.includes("г") || value.includes("l") || value.includes("l-shape") || pointsCount === 6 || pointsCount === 7) return "lshape";
+  if (value.includes("rect") || value.includes("прям") || pointsCount === 4) return "rectangle";
+  return "custom";
+}
+
 function sketchTextLabel(point, key, value, className) {
   const label = value ? `${key}: ${formatQty(value)} м` : key;
   const width = Math.max(76, label.length * 8 + 20);
@@ -796,6 +832,25 @@ function sketchTextLabel(point, key, value, className) {
       <text x="${point.x}" y="${point.y + 5}">${escapeHtml(label)}</text>
     </g>
   `;
+}
+
+function sketchEdgeLabel(edge, value) {
+  if (edge.length < 54 && !value) return "";
+  const center = sketchCentroid(state.installerSketch.points);
+  const dx = edge.to.x - edge.from.x;
+  const dy = edge.to.y - edge.from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  let normal = { x: -dy / length, y: dx / length };
+  const midpointToCenter = { x: center.x - edge.midpoint.x, y: center.y - edge.midpoint.y };
+  if (normal.x * midpointToCenter.x + normal.y * midpointToCenter.y > 0) {
+    normal = { x: -normal.x, y: -normal.y };
+  }
+  const offset = edge.length < 95 ? 48 : 26;
+  const point = clampLabelPoint({
+    x: edge.midpoint.x + normal.x * offset,
+    y: edge.midpoint.y + normal.y * offset
+  });
+  return sketchTextLabel(point, edge.key, value, `sketch-size-label${edge.length < 95 ? " is-compact" : ""}`);
 }
 
 function sketchMetaTemplate() {
@@ -843,7 +898,7 @@ function dimensionInput(item, type) {
           inputmode="decimal"
           enterkeyhint="next"
           value="${escapeHtml(inputQtyValue(value))}"
-          placeholder="${escapeHtml(formatQty(item.estimated))}"
+          placeholder="${escapeHtml(dimensionPlaceholder(item.estimated))}"
           data-sketch-${type}="${escapeHtml(item.key)}"
         >
         <small>м</small>
@@ -851,6 +906,12 @@ function dimensionInput(item, type) {
       ${type === "dimension" ? `<button type="button" data-insert-bend="${escapeHtml(item.key)}">изгиб</button>` : ""}
     </div>
   `;
+}
+
+function dimensionPlaceholder(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number) || number < 0.1) return "размер";
+  return formatQty(number);
 }
 
 function bindCatalogControls() {
@@ -1039,6 +1100,7 @@ function bindInstallerSketch() {
   let suppressNextClick = false;
 
   const renderSketch = () => {
+    cleanSketchAfterPointChange();
     normalizeSketchDimensionState();
     board.innerHTML = sketchTemplate();
     if (meta) meta.innerHTML = sketchMetaTemplate();
@@ -1104,8 +1166,21 @@ function bindInstallerSketch() {
     renderSketch();
   });
 
+  document.querySelectorAll("[data-sketch-template]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.installerSketch = button.dataset.sketchTemplate === "lshape" ? createLShapeSketch() : createDefaultSketch();
+      renderSketch();
+    });
+  });
+
+  document.querySelector("[data-sketch-autofit]")?.addEventListener("click", () => {
+    repairSketchLayout();
+    renderSketch();
+  });
+
   document.querySelector("[data-sketch-undo]")?.addEventListener("click", () => {
     if (state.installerSketch.points.length > 0) state.installerSketch.points.pop();
+    cleanSketchAfterPointChange();
     renderSketch();
   });
 
@@ -1164,10 +1239,16 @@ function applyInstallerAiDraft(draft) {
     aiConfidence: Number(draft.confidence || 0),
     warnings: Array.isArray(draft.warnings) ? draft.warnings : [],
     note: draft.notes || "",
+    shapeType: normalizeAiShapeType(draft.shapeType, points.length),
     aiDraft: true
   };
 
   normalizeSketchDimensionState();
+  if (state.installerSketch.shapeType !== "custom" || points.length === 7) {
+    repairSketchLayout();
+    return;
+  }
+  cleanSketchAfterPointChange();
   applySketchDimensionsToGeometry();
 }
 
@@ -1578,6 +1659,7 @@ function insertBendOnEdge(edgeKey, explicitPoint) {
   state.installerSketch.points = nextPoints;
   state.installerSketch.dimensions = remapDimensionsAfterInsert(oldEdges, edge.index, oldDimensions);
   state.installerSketch.diagonals = {};
+  state.installerSketch.shapeType = "custom";
   state.installerSketch.aiDraft = false;
   applySketchDimensionsToGeometry();
 }
@@ -1627,8 +1709,137 @@ function nearestSketchEdge(point) {
     .sort((a, b) => a.distance - b.distance)[0];
 }
 
+function repairSketchLayout() {
+  cleanSketchAfterPointChange();
+  const count = state.installerSketch.points.length;
+  if (state.installerSketch.shapeType === "lshape" || count === 6 || count === 7) {
+    return repairLShapeLayout();
+  }
+  if (state.installerSketch.shapeType === "rectangle" || count === 4) {
+    return repairRectangleLayout();
+  }
+  state.installerSketch.points = fitSketchPoints(orderPointsAroundCentroid(state.installerSketch.points));
+  relabelSketchPoints(state.installerSketch.points);
+  state.installerSketch.shapeType = "custom";
+  normalizeSketchDimensionState();
+}
+
+function repairRectangleLayout() {
+  const oldDimensions = { ...(state.installerSketch.dimensions || {}) };
+  const edgeValues = sketchEdges(state.installerSketch.points).map((edge) => oldDimensions[edge.key] || edge.estimated || 0);
+  const widthMeters = edgeValues[0] || edgeValues[2] || 4;
+  const heightMeters = edgeValues[1] || edgeValues[3] || 2.6;
+  const width = Math.max(210, Math.min(520, widthMeters * 125));
+  const height = Math.max(150, Math.min(300, heightMeters * 105));
+  const left = 320 - width / 2;
+  const top = 210 - height / 2;
+  state.installerSketch.points = [
+    { label: "A", x: Math.round(left), y: Math.round(top) },
+    { label: "B", x: Math.round(left + width), y: Math.round(top) },
+    { label: "C", x: Math.round(left + width), y: Math.round(top + height) },
+    { label: "D", x: Math.round(left), y: Math.round(top + height) }
+  ];
+  state.installerSketch.dimensions = {
+    "A-B": roundDimension(widthMeters),
+    "B-C": roundDimension(heightMeters),
+    "C-D": roundDimension(edgeValues[2] || widthMeters),
+    "D-A": roundDimension(edgeValues[3] || heightMeters)
+  };
+  state.installerSketch.diagonals = {};
+  state.installerSketch.shapeType = "rectangle";
+  normalizeSketchDimensionState();
+}
+
+function repairLShapeLayout() {
+  const values = lShapeDimensionValues();
+  const width = 500;
+  const height = 280;
+  const left = 70;
+  const top = 70;
+  const right = left + width;
+  const bottom = top + height;
+  const notchXFromBottom = right - width * Math.min(0.82, Math.max(0.28, values.bottom / values.top));
+  const notchXFromInner = left + width * Math.min(0.72, Math.max(0.18, values.innerHorizontal / values.top));
+  const notchX = Math.round((notchXFromBottom + notchXFromInner) / 2);
+  const notchYFromInner = bottom - height * Math.min(0.86, Math.max(0.22, values.innerVertical / values.right));
+  const notchYFromLeft = top + height * Math.min(0.78, Math.max(0.16, values.left / values.right));
+  const notchY = Math.round((notchYFromInner + notchYFromLeft) / 2);
+
+  state.installerSketch.points = [
+    { label: "A", x: left, y: top },
+    { label: "B", x: right, y: top },
+    { label: "C", x: right, y: bottom },
+    { label: "D", x: notchX, y: bottom },
+    { label: "E", x: notchX, y: notchY },
+    { label: "F", x: left, y: notchY }
+  ];
+  state.installerSketch.dimensions = {
+    "A-B": roundDimension(values.top),
+    "B-C": roundDimension(values.right),
+    "C-D": roundDimension(values.bottom),
+    "D-E": roundDimension(values.innerVertical),
+    "E-F": roundDimension(values.innerHorizontal),
+    "F-A": roundDimension(values.left)
+  };
+  state.installerSketch.diagonals = {};
+  state.installerSketch.shapeType = "lshape";
+  normalizeSketchDimensionState();
+}
+
+function lShapeDimensionValues() {
+  const defaults = { top: 3.45, right: 2.9, bottom: 2.2, innerVertical: 2.2, innerHorizontal: 1.2, left: 0.75 };
+  const edges = sketchEdges(state.installerSketch.points);
+  const dimensions = state.installerSketch.dimensions || {};
+  const byIndex = (index, fallback) => Number(dimensions[edges[index]?.key]) || fallback;
+  return {
+    top: byIndex(0, Number(dimensions["A-B"]) || defaults.top),
+    right: byIndex(1, Number(dimensions["B-C"]) || defaults.right),
+    bottom: byIndex(2, Number(dimensions["C-D"]) || defaults.bottom),
+    innerVertical: byIndex(3, Number(dimensions["D-E"]) || defaults.innerVertical),
+    innerHorizontal: byIndex(4, Number(dimensions["E-F"]) || defaults.innerHorizontal),
+    left: byIndex(5, Number(dimensions["F-A"]) || defaults.left)
+  };
+}
+
+function cleanSketchAfterPointChange() {
+  const points = state.installerSketch.points || [];
+  const cleaned = [];
+  for (const point of points) {
+    const next = clampSketchPoint(point);
+    const previous = cleaned[cleaned.length - 1];
+    if (previous && distance(previous, next) < 18) continue;
+    cleaned.push(next);
+  }
+  if (cleaned.length > 2 && distance(cleaned[0], cleaned[cleaned.length - 1]) < 18) cleaned.pop();
+  state.installerSketch.points = cleaned.length >= 2 ? cleaned : createDefaultSketch().points;
+  relabelSketchPoints(state.installerSketch.points);
+  normalizeSketchDimensionState();
+}
+
+function orderPointsAroundCentroid(points) {
+  const center = sketchCentroid(points);
+  return [...points].sort((a, b) => Math.atan2(a.y - center.y, a.x - center.x) - Math.atan2(b.y - center.y, b.x - center.x));
+}
+
+function roundDimension(value) {
+  const number = Number(value || 0);
+  return Math.round(number * 100) / 100;
+}
+
+function useStructuredLayoutForDimensions() {
+  const count = state.installerSketch.points.length;
+  return state.installerSketch.shapeType === "rectangle"
+    || state.installerSketch.shapeType === "lshape"
+    || count === 4
+    || count === 6;
+}
+
 function applySketchDimensionsToGeometry() {
   normalizeSketchDimensionState();
+  if (useStructuredLayoutForDimensions()) {
+    repairSketchLayout();
+    return;
+  }
   const points = state.installerSketch.points.map((point) => ({ ...point }));
   if (points.length < 2) return;
 
@@ -1728,6 +1939,13 @@ function clampSketchPoint(point) {
     ...point,
     x: Math.max(28, Math.min(612, Math.round(point.x))),
     y: Math.max(28, Math.min(392, Math.round(point.y)))
+  };
+}
+
+function clampLabelPoint(point) {
+  return {
+    x: Math.max(64, Math.min(576, Math.round(point.x))),
+    y: Math.max(38, Math.min(382, Math.round(point.y)))
   };
 }
 
