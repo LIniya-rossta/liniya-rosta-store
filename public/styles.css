@@ -1728,6 +1728,14 @@ select {
     0 18px 46px rgba(99, 230, 255, 0.1);
 }
 
+.sketch-board.is-snapping {
+  border-color: rgba(99, 230, 255, 0.34);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 3px rgba(99, 230, 255, 0.08),
+    0 18px 46px rgba(99, 230, 255, 0.08);
+}
+
 .sketch-svg {
   width: 100%;
   height: 100%;
@@ -1773,6 +1781,36 @@ select {
   stroke-linecap: round;
   filter: drop-shadow(0 0 18px rgba(243, 220, 168, 0.42));
   pointer-events: none;
+}
+
+.sketch-snap-layer {
+  pointer-events: none;
+}
+
+.sketch-snap-guide {
+  stroke: rgba(99, 230, 255, 0.86);
+  stroke-width: 2;
+  stroke-dasharray: 9 9;
+  filter: drop-shadow(0 0 12px rgba(99, 230, 255, 0.48));
+  animation: sketchSnapPulse 0.82s ease-in-out infinite;
+}
+
+.sketch-snap-guide.is-horizontal {
+  stroke: rgba(243, 220, 168, 0.86);
+  filter: drop-shadow(0 0 12px rgba(243, 220, 168, 0.42));
+}
+
+.sketch-snap-label rect {
+  fill: rgba(7, 17, 26, 0.88);
+  stroke: rgba(255, 255, 255, 0.18);
+}
+
+.sketch-snap-label text {
+  fill: #f6fbff;
+  font-size: 10px;
+  font-weight: 950;
+  text-anchor: middle;
+  letter-spacing: 0;
 }
 
 .sketch-size-label rect {
@@ -1848,6 +1886,12 @@ select {
   fill: #07111a;
   stroke: var(--gold-2);
   stroke-width: 4;
+}
+
+.sketch-point.is-snapped circle {
+  stroke: var(--cyan);
+  filter: drop-shadow(0 0 14px rgba(99, 230, 255, 0.62));
+  animation: sketchSnapPoint 0.58s ease-in-out infinite alternate;
 }
 
 .sketch-point {
@@ -2638,6 +2682,16 @@ select {
   0% { transform: scale(0.62) rotate(-16deg); opacity: 0; }
   64% { transform: scale(1.12) rotate(4deg); opacity: 1; }
   100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes sketchSnapPulse {
+  0%, 100% { opacity: 0.42; }
+  50% { opacity: 1; }
+}
+
+@keyframes sketchSnapPoint {
+  from { stroke-width: 4; }
+  to { stroke-width: 7; }
 }
 
 @media (prefers-color-scheme: dark) {

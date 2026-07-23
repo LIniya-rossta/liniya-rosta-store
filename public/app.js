@@ -93,7 +93,8 @@ const state = {
   installerPhoto: null,
   installerHoleMode: null,
   installerDimensionDrafts: {},
-  installerDimensionObserver: null
+  installerDimensionObserver: null,
+  installerSnapGuide: null
 };
 
 const elements = {
@@ -975,6 +976,7 @@ function sketchTemplate() {
   const pointString = points.map((point) => `${point.x},${point.y}`).join(" ");
   const edgeLabels = sketchEdgeLabels(edges);
   const diagonals = sketchDiagonals(points);
+  const snapGuide = sketchSnapGuideTemplate(state.installerSnapGuide, viewport);
   const diagonalLines = diagonals.map((diagonal) => {
     const value = state.installerSketch.diagonals[diagonal.key];
     if (!value) return "";
@@ -983,12 +985,16 @@ function sketchTemplate() {
       ${sketchTextLabel(diagonal.midpoint, diagonal.key, value, "sketch-size-label is-diagonal")}
     `;
   }).join("");
-  const circles = points.map((point, index) => `
-    <g class="sketch-point" data-sketch-point="${index}">
+  const circles = points.map((point, index) => {
+    const isSnapped = state.installerSnapGuide?.pointIndex === index
+      && (state.installerSnapGuide.x || state.installerSnapGuide.y);
+    return `
+    <g class="sketch-point${isSnapped ? " is-snapped" : ""}" data-sketch-point="${index}">
       <circle cx="${point.x}" cy="${point.y}" r="16"></circle>
       <text x="${point.x}" y="${point.y + 5}">${escapeHtml(point.label)}</text>
     </g>
-  `).join("");
+  `;
+  }).join("");
 
   return `
     <svg class="sketch-svg" viewBox="${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}" role="img" aria-label="Чертеж потолка">
@@ -999,6 +1005,7 @@ function sketchTemplate() {
         </linearGradient>
       </defs>
       <rect x="${viewport.x + 1}" y="${viewport.y + 1}" width="${Math.max(1, viewport.width - 2)}" height="${Math.max(1, viewport.height - 2)}" rx="30"></rect>
+      ${snapGuide}
       ${points.length >= 3 ? `<polygon points="${pointString}"></polygon>` : ""}
       ${points.length >= 2 ? `<polyline points="${pointString}${points.length >= 3 ? ` ${points[0].x},${points[0].y}` : ""}"></polyline>` : ""}
       ${activeEdge ? `<line class="sketch-active-edge" x1="${activeEdge.from.x}" y1="${activeEdge.from.y}" x2="${activeEdge.to.x}" y2="${activeEdge.to.y}"></line>` : ""}
@@ -1008,6 +1015,38 @@ function sketchTemplate() {
       ${circles}
     </svg>
   `;
+}
+
+function sketchSnapGuideTemplate(guide, viewport) {
+  if (!guide || (!guide.x && !guide.y)) return "";
+  const lines = [];
+  const labelX = viewport.x + 24;
+  const labelY = viewport.y + 28;
+  if (guide.x) {
+    const x = Number(guide.x.value);
+    const y1 = viewport.y + 12;
+    const y2 = viewport.y + viewport.height - 12;
+    lines.push(`
+      <line class="sketch-snap-guide is-vertical" x1="${x}" y1="${y1}" x2="${x}" y2="${y2}"></line>
+      <g class="sketch-snap-label" transform="translate(${Math.min(x + 14, viewport.x + viewport.width - 118)} ${labelY})">
+        <rect x="0" y="-18" width="104" height="28" rx="12"></rect>
+        <text x="52" y="1">вертикаль ${escapeHtml(guide.x.label || "")}</text>
+      </g>
+    `);
+  }
+  if (guide.y) {
+    const y = Number(guide.y.value);
+    const x1 = viewport.x + 12;
+    const x2 = viewport.x + viewport.width - 12;
+    lines.push(`
+      <line class="sketch-snap-guide is-horizontal" x1="${x1}" y1="${y}" x2="${x2}" y2="${y}"></line>
+      <g class="sketch-snap-label" transform="translate(${labelX} ${Math.max(y - 12, viewport.y + 22)})">
+        <rect x="0" y="-18" width="116" height="28" rx="12"></rect>
+        <text x="58" y="1">горизонталь ${escapeHtml(guide.y.label || "")}</text>
+      </g>
+    `);
+  }
+  return `<g class="sketch-snap-layer">${lines.join("")}</g>`;
 }
 
 function sketchHoleTemplate(hole) {
@@ -1882,6 +1921,8 @@ function bindInstallerSketch() {
   };
 
   const renderSketch = () => {
+    state.installerSnapGuide = null;
+    board.classList.remove("is-snapping");
     cleanSketchAfterPointChange();
     normalizeSketchDimensionState();
     board.innerHTML = sketchTemplate();
@@ -1950,6 +1991,8 @@ function bindInstallerSketch() {
     dragMoved = false;
     dragStartSketch = cloneInstallerSketch();
     dragStartScale = sketchScaleFromDimensions(dragStartSketch);
+    state.installerSnapGuide = null;
+    board.classList.remove("is-snapping");
     state.installerSketch.shapeType = "custom";
     state.installerSketch.aiDraft = false;
     board.setPointerCapture?.(event.pointerId);
@@ -1960,10 +2003,13 @@ function bindInstallerSketch() {
     const svg = board.querySelector(".sketch-svg");
     if (!svg) return;
     event.preventDefault();
+    const snapped = snapSketchDragPoint(pointerToSketchPoint(svg, event), dragIndex, dragStartSketch?.points);
     state.installerSketch.points[dragIndex] = {
       ...state.installerSketch.points[dragIndex],
-      ...pointerToSketchPoint(svg, event)
+      ...snapped.point
     };
+    state.installerSnapGuide = snapped.guide;
+    board.classList.toggle("is-snapping", Boolean(snapped.guide));
     syncDimensionsFromGeometry(dragStartScale);
     dragMoved = true;
     board.innerHTML = sketchTemplate();
@@ -1976,12 +2022,16 @@ function bindInstallerSketch() {
       pushInstallerHistory(dragStartSketch);
       state.installerSketch.shapeType = "custom";
       state.installerSketch.aiDraft = false;
+      state.installerSnapGuide = null;
+      board.classList.remove("is-snapping");
       syncDimensionsFromGeometry(dragStartScale);
       renderSketch();
     }
     dragIndex = null;
     dragStartSketch = null;
     dragStartScale = null;
+    state.installerSnapGuide = null;
+    board.classList.remove("is-snapping");
     board.releasePointerCapture?.(event.pointerId);
   });
 
@@ -3317,6 +3367,62 @@ function parseDimension(value) {
   const number = match ? Number(match[0]) : 0;
   if (!Number.isFinite(number) || number <= 0) return 0;
   return Math.round(number * 100) / 100;
+}
+
+function snapSketchDragPoint(point, movingIndex, basePoints = state.installerSketch.points) {
+  const threshold = window.matchMedia?.("(max-width: 560px)")?.matches ? 26 : 18;
+  const candidates = (basePoints || [])
+    .map((item, index) => ({ ...item, index }))
+    .filter((item) => item.index !== movingIndex);
+  if (!candidates.length) {
+    return { point: clampSketchPoint(point), guide: null };
+  }
+
+  const closestX = closestSnapCandidate(point.x, candidates, "x", threshold);
+  const closestY = closestSnapCandidate(point.y, candidates, "y", threshold);
+  const guide = { pointIndex: movingIndex };
+  const next = { ...point };
+
+  if (closestX) {
+    next.x = closestX.value;
+    guide.x = closestX;
+  }
+  if (closestY) {
+    next.y = closestY.value;
+    guide.y = closestY;
+  }
+
+  if (guide.x && guide.y && guide.x.index === guide.y.index) {
+    const target = candidates.find((candidate) => candidate.index === guide.x.index);
+    const nearTarget = target ? Math.hypot(point.x - target.x, point.y - target.y) < threshold * 1.8 : false;
+    if (nearTarget) {
+      if (Math.abs(point.x - guide.x.value) <= Math.abs(point.y - guide.y.value)) {
+        delete guide.y;
+        next.y = point.y;
+      } else {
+        delete guide.x;
+        next.x = point.x;
+      }
+    }
+  }
+
+  const snapped = Boolean(guide.x || guide.y);
+  return {
+    point: clampSketchPoint(next),
+    guide: snapped ? guide : null
+  };
+}
+
+function closestSnapCandidate(value, points, axis, threshold) {
+  return points
+    .map((point) => ({
+      index: point.index,
+      label: point.label,
+      value: Number(point[axis]),
+      distance: Math.abs(Number(point[axis]) - value)
+    }))
+    .filter((candidate) => Number.isFinite(candidate.value) && candidate.distance <= threshold)
+    .sort((a, b) => a.distance - b.distance)[0] || null;
 }
 
 function pointerToSketchPoint(svg, event) {
