@@ -1,6 +1,11 @@
 const routes = new Set(["/", "/catalog", "/cart", "/checkout", "/success", "/measure", "/installer"]);
 const money = new Intl.NumberFormat("ru-RU");
 const KYRGYZ_TIME_ZONE = "Asia/Bishkek";
+const SKETCH_WIDTH = 640;
+const SKETCH_HEIGHT = 1040;
+const SKETCH_CENTER_X = SKETCH_WIDTH / 2;
+const SKETCH_CENTER_Y = SKETCH_HEIGHT / 2;
+const SKETCH_MARGIN = 28;
 const previewProducts = [
   {
     id: "preview-laminate",
@@ -920,12 +925,14 @@ async function loadManagers() {
 }
 
 function createDefaultSketch() {
+  const top = SKETCH_CENTER_Y - 120;
+  const bottom = SKETCH_CENTER_Y + 120;
   return {
     points: [
-      { label: "A", x: 120, y: 90 },
-      { label: "B", x: 520, y: 90 },
-      { label: "C", x: 520, y: 330 },
-      { label: "D", x: 120, y: 330 }
+      { label: "A", x: 120, y: top },
+      { label: "B", x: 520, y: top },
+      { label: "C", x: 520, y: bottom },
+      { label: "D", x: 120, y: bottom }
     ],
     dimensions: {
       "A-B": 3.45,
@@ -942,14 +949,17 @@ function createDefaultSketch() {
 }
 
 function createLShapeSketch() {
+  const top = SKETCH_CENTER_Y - 140;
+  const innerY = top + 75;
+  const bottom = SKETCH_CENTER_Y + 140;
   return {
     points: [
-      { label: "A", x: 70, y: 70 },
-      { label: "B", x: 570, y: 70 },
-      { label: "C", x: 570, y: 350 },
-      { label: "D", x: 255, y: 350 },
-      { label: "E", x: 255, y: 145 },
-      { label: "F", x: 70, y: 145 }
+      { label: "A", x: 70, y: top },
+      { label: "B", x: 570, y: top },
+      { label: "C", x: 570, y: bottom },
+      { label: "D", x: 255, y: bottom },
+      { label: "E", x: 255, y: innerY },
+      { label: "F", x: 70, y: innerY }
     ],
     dimensions: {
       "A-B": 3.45,
@@ -1329,8 +1339,8 @@ function pushLabelAwayFromBox(label, box, padding = 8) {
 function clampSketchLabel(label) {
   const halfWidth = label.width / 2;
   const halfHeight = label.height / 2;
-  label.x = Math.max(12 + halfWidth, Math.min(628 - halfWidth, label.x));
-  label.y = Math.max(16 + halfHeight, Math.min(404 - halfHeight, label.y));
+  label.x = Math.max(12 + halfWidth, Math.min(SKETCH_WIDTH - 12 - halfWidth, label.x));
+  label.y = Math.max(16 + halfHeight, Math.min(SKETCH_HEIGHT - 16 - halfHeight, label.y));
   return label;
 }
 
@@ -2075,12 +2085,12 @@ function bindInstallerSketch() {
       if (!svg) return;
       const point = pointerToSketchPoint(svg, event);
       const edge = nearestSketchEdge(point);
-      if (edge && edge.distance <= 72) {
+      if (edge) {
         insertPointOnEdge(edge.key, edge.closestPoint);
         setAddPointMode(false);
         renderSketch();
       } else {
-        toast("Нажмите ближе к линии контура.");
+        toast("Сначала добавьте контур.");
       }
       return;
     }
@@ -3118,11 +3128,11 @@ function repairRectangleLayout() {
     : dimensionValue("B-C") || dimensionValue("D-A") || edgeValues[1] || edgeValues[3] || 2.6;
   const safeWidthMeters = Math.max(0.1, Number(widthMeters));
   const safeHeightMeters = Math.max(0.1, Number(heightMeters));
-  const scale = Math.min(520 / safeWidthMeters, 320 / safeHeightMeters, 130);
+  const scale = Math.min((SKETCH_WIDTH - 120) / safeWidthMeters, 360 / safeHeightMeters, 130);
   const width = Math.round(safeWidthMeters * scale);
   const height = Math.round(safeHeightMeters * scale);
-  const left = 320 - width / 2;
-  const top = 210 - height / 2;
+  const left = SKETCH_CENTER_X - width / 2;
+  const top = SKETCH_CENTER_Y - height / 2;
   state.installerSketch.points = [
     { label: "A", x: Math.round(left), y: Math.round(top) },
     { label: "B", x: Math.round(left + width), y: Math.round(top) },
@@ -3145,7 +3155,7 @@ function repairLShapeLayout() {
   const width = 500;
   const height = 280;
   const left = 70;
-  const top = 70;
+  const top = SKETCH_CENTER_Y - height / 2;
   const right = left + width;
   const bottom = top + height;
   const notchXFromBottom = right - width * Math.min(0.82, Math.max(0.28, values.bottom / values.top));
@@ -3305,16 +3315,16 @@ function sketchViewport(points = state.installerSketch.points, holes = state.ins
     ...(Array.isArray(points) ? points : []),
     ...(Array.isArray(holes) ? holes : [])
   ].filter((point) => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
-  if (!items.length) return { x: 0, y: 0, width: 640, height: 420 };
+  if (!items.length) return { x: 0, y: 0, width: SKETCH_WIDTH, height: SKETCH_HEIGHT };
 
   const bounds = sketchBounds(items);
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const centerY = (bounds.minY + bounds.maxY) / 2;
   const narrow = typeof window !== "undefined" && window.matchMedia?.("(max-width: 560px)")?.matches;
-  const aspect = narrow ? 1.1 : 640 / 420;
-  const padding = narrow ? 72 : 84;
-  let width = Math.max(narrow ? 300 : 440, bounds.maxX - bounds.minX + padding * 2);
-  let height = Math.max(narrow ? 300 : 290, bounds.maxY - bounds.minY + padding * 2);
+  const aspect = narrow ? 0.56 : SKETCH_WIDTH / 420;
+  const padding = narrow ? 80 : 84;
+  let width = Math.max(narrow ? 420 : 440, bounds.maxX - bounds.minX + padding * 2);
+  let height = Math.max(narrow ? 720 : 290, bounds.maxY - bounds.minY + padding * 2);
 
   if (width / height > aspect) {
     height = width / aspect;
@@ -3322,8 +3332,8 @@ function sketchViewport(points = state.installerSketch.points, holes = state.ins
     width = height * aspect;
   }
 
-  const maxWidth = narrow ? 462 : 640;
-  const maxHeight = 420;
+  const maxWidth = SKETCH_WIDTH;
+  const maxHeight = narrow ? SKETCH_HEIGHT : 520;
   if (width > maxWidth) {
     width = maxWidth;
     height = width / aspect;
@@ -3332,13 +3342,13 @@ function sketchViewport(points = state.installerSketch.points, holes = state.ins
     height = maxHeight;
     width = height * aspect;
   }
-  width = Math.max(narrow ? 300 : 440, width);
-  height = Math.max(narrow ? 300 : 290, height);
+  width = Math.max(narrow ? 420 : 440, width);
+  height = Math.max(narrow ? 720 : 290, height);
 
   let x = centerX - width / 2;
   let y = centerY - height / 2;
-  x = Math.max(0, Math.min(640 - width, x));
-  y = Math.max(0, Math.min(420 - height, y));
+  x = Math.max(0, Math.min(SKETCH_WIDTH - width, x));
+  y = Math.max(0, Math.min(SKETCH_HEIGHT - height, y));
 
   return {
     x: Math.round(x * 10) / 10,
@@ -3382,9 +3392,9 @@ function fitSketchPoints(points) {
   const bounds = sketchBounds(points);
   const width = Math.max(1, bounds.maxX - bounds.minX);
   const height = Math.max(1, bounds.maxY - bounds.minY);
-  const scale = Math.min(1.35, 520 / width, 320 / height);
-  const offsetX = 320 - ((bounds.minX + bounds.maxX) / 2) * scale;
-  const offsetY = 210 - ((bounds.minY + bounds.maxY) / 2) * scale;
+  const scale = Math.min(1.35, (SKETCH_WIDTH - 120) / width, (SKETCH_HEIGHT - 180) / height);
+  const offsetX = SKETCH_CENTER_X - ((bounds.minX + bounds.maxX) / 2) * scale;
+  const offsetY = SKETCH_CENTER_Y - ((bounds.minY + bounds.maxY) / 2) * scale;
   return points.map((point) => clampSketchPoint({
     ...point,
     x: point.x * scale + offsetX,
@@ -3416,15 +3426,15 @@ function relabelSketchPoints(points) {
 function clampSketchPoint(point) {
   return {
     ...point,
-    x: Math.max(28, Math.min(612, Math.round(point.x))),
-    y: Math.max(28, Math.min(392, Math.round(point.y)))
+    x: Math.max(SKETCH_MARGIN, Math.min(SKETCH_WIDTH - SKETCH_MARGIN, Math.round(point.x))),
+    y: Math.max(SKETCH_MARGIN, Math.min(SKETCH_HEIGHT - SKETCH_MARGIN, Math.round(point.y)))
   };
 }
 
 function clampLabelPoint(point) {
   return {
-    x: Math.max(64, Math.min(576, Math.round(point.x))),
-    y: Math.max(38, Math.min(382, Math.round(point.y)))
+    x: Math.max(64, Math.min(SKETCH_WIDTH - 64, Math.round(point.x))),
+    y: Math.max(38, Math.min(SKETCH_HEIGHT - 38, Math.round(point.y)))
   };
 }
 
@@ -3596,8 +3606,8 @@ function closestDiagonalSnapCandidate(point, points, threshold) {
   return candidates
     .filter((candidate) => {
       if (!Number.isFinite(candidate.distance) || candidate.distance > threshold) return false;
-      return candidate.projected.x >= 28 && candidate.projected.x <= 612
-        && candidate.projected.y >= 28 && candidate.projected.y <= 392;
+      return candidate.projected.x >= SKETCH_MARGIN && candidate.projected.x <= SKETCH_WIDTH - SKETCH_MARGIN
+        && candidate.projected.y >= SKETCH_MARGIN && candidate.projected.y <= SKETCH_HEIGHT - SKETCH_MARGIN;
     })
     .sort((a, b) => a.distance - b.distance)[0] || null;
 }
@@ -3623,8 +3633,8 @@ function pointerToSketchPoint(svg, event) {
   const viewBox = svg.viewBox?.baseVal;
   const originX = Number.isFinite(viewBox?.x) ? viewBox.x : 0;
   const originY = Number.isFinite(viewBox?.y) ? viewBox.y : 0;
-  const width = Number.isFinite(viewBox?.width) && viewBox.width > 0 ? viewBox.width : 640;
-  const height = Number.isFinite(viewBox?.height) && viewBox.height > 0 ? viewBox.height : 420;
+  const width = Number.isFinite(viewBox?.width) && viewBox.width > 0 ? viewBox.width : SKETCH_WIDTH;
+  const height = Number.isFinite(viewBox?.height) && viewBox.height > 0 ? viewBox.height : SKETCH_HEIGHT;
   return clampSketchPoint({
     x: originX + Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * width,
     y: originY + Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)) * height
