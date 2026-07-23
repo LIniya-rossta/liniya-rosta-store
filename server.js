@@ -2173,9 +2173,15 @@ async function notifyOrderWatchers(order) {
 
 async function getNotificationChatIds() {
   const watchers = await readJson(WATCHERS_FILE, []);
+  const managerChatIds = new Set(
+    (await readJson(MANAGER_BINDINGS_FILE, []))
+      .map((binding) => String(binding.chatId || ""))
+      .filter(Boolean)
+  );
   const chatIds = new Set([...TELEGRAM_ADMINS]);
   for (const watcher of watchers) {
-    if (watcher.chatId) chatIds.add(String(watcher.chatId));
+    const watcherChatId = String(watcher.chatId || "");
+    if (watcherChatId && !managerChatIds.has(watcherChatId)) chatIds.add(watcherChatId);
   }
   return [...chatIds];
 }
@@ -2183,14 +2189,13 @@ async function getNotificationChatIds() {
 async function notifyInstallerManagers(request) {
   if (!ENABLE_TELEGRAM_BOT || !TELEGRAM_BOT_TOKEN) return;
   const chatIds = await getManagerChatIds(request.manager?.id);
-  const targetChatIds = chatIds.length ? chatIds : [...TELEGRAM_ADMINS];
-  if (!targetChatIds.length) return;
+  if (!chatIds.length) {
+    console.warn(`Installer request ${request.id} was not sent: manager ${request.manager?.id || "unknown"} has no Telegram binding`);
+    return;
+  }
 
-  const prefix = chatIds.length
-    ? "Новая заявка монтажника"
-    : "Новая заявка монтажника\nМенеджер еще не привязан в боте, поэтому заявка пришла администраторам";
-  const message = `${prefix}\n${MESSAGE_SEPARATOR}\n${formatInstallerRequest(request)}`;
-  for (const chatId of targetChatIds) {
+  const message = `Новая заявка монтажника\n${MESSAGE_SEPARATOR}\n${formatInstallerRequest(request)}`;
+  for (const chatId of chatIds) {
     await sendMessage(chatId, message);
     await sendInstallerRequestFiles(chatId, request);
   }
