@@ -1713,7 +1713,7 @@ select {
 }
 
 .sketch-size-label.is-compact rect {
-  fill: rgba(8, 14, 22, 0.72);
+  fill: rgba(8, 14, 22, 0.78);
 }
 
 .sketch-size-label text {
@@ -1722,6 +1722,10 @@ select {
   font-weight: 950;
   text-anchor: middle;
   pointer-events: none;
+}
+
+.sketch-size-label.is-compact text {
+  font-size: 11px;
 }
 
 .sketch-size-label.is-diagonal text {

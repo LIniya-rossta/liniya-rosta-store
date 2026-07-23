@@ -955,8 +955,9 @@ function sketchTemplate() {
   const points = state.installerSketch.points;
   const holes = state.installerSketch.holes || [];
   const activeEdge = resolveSketchEdge();
+  const edges = sketchEdges(points);
   const pointString = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const edgeLabels = sketchEdges(points).map((edge) => sketchEdgeLabel(edge, state.installerSketch.dimensions[edge.key])).join("");
+  const edgeLabels = sketchEdgeLabels(edges);
   const diagonals = sketchDiagonals(points);
   const diagonalLines = diagonals.map((diagonal) => {
     const value = state.installerSketch.diagonals[diagonal.key];
@@ -1030,7 +1031,50 @@ function sketchTextLabel(point, key, value, className) {
   `;
 }
 
-function sketchEdgeLabel(edge, value) {
+function sketchEdgeLabels(edges) {
+  return layoutSketchEdgeLabels(edges)
+    .map((label) => sketchEdgeLabel(label))
+    .join("");
+}
+
+function layoutSketchEdgeLabels(edges) {
+  const labels = edges
+    .map((edge, index) => createSketchEdgeLabel(edge, state.installerSketch.dimensions[edge.key], index))
+    .filter(Boolean);
+  const pointRepellers = state.installerSketch.points.map((point) => ({
+    x: point.x,
+    y: point.y,
+    width: 58,
+    height: 58
+  }));
+
+  for (let iteration = 0; iteration < 90; iteration += 1) {
+    let moved = false;
+
+    for (let index = 0; index < labels.length; index += 1) {
+      for (let nextIndex = index + 1; nextIndex < labels.length; nextIndex += 1) {
+        if (separateSketchLabels(labels[index], labels[nextIndex], 10)) moved = true;
+      }
+    }
+
+    labels.forEach((label) => {
+      pointRepellers.forEach((point) => {
+        if (pushLabelAwayFromBox(label, point, 8)) moved = true;
+      });
+      clampSketchLabel(label);
+    });
+
+    if (!moved && iteration > 12) break;
+  }
+
+  return labels.map((label) => ({
+    ...label,
+    x: Math.round(label.x),
+    y: Math.round(label.y)
+  }));
+}
+
+function createSketchEdgeLabel(edge, value, index) {
   if (edge.length < 54 && !value) return "";
   const isActive = edge.key === state.installerSketch.activeEdgeKey;
   const center = sketchCentroid(state.installerSketch.points);
@@ -1038,23 +1082,102 @@ function sketchEdgeLabel(edge, value) {
   const dy = edge.to.y - edge.from.y;
   const length = Math.hypot(dx, dy) || 1;
   let normal = { x: -dy / length, y: dx / length };
+  const tangent = { x: dx / length, y: dy / length };
   const midpointToCenter = { x: center.x - edge.midpoint.x, y: center.y - edge.midpoint.y };
   if (normal.x * midpointToCenter.x + normal.y * midpointToCenter.y > 0) {
     normal = { x: -normal.x, y: -normal.y };
   }
-  const offset = edge.length < 95 ? 48 : 26;
-  const point = clampLabelPoint({
-    x: edge.midpoint.x + normal.x * offset,
-    y: edge.midpoint.y + normal.y * offset
-  });
+  const isCompact = edge.length < 115;
+  const offset = isCompact ? 54 : 30;
+  const stagger = isCompact ? ((index % 2 === 0 ? -1 : 1) * Math.min(22, Math.max(8, edge.length * 0.18))) : 0;
   const label = value ? `${edge.key}: ${formatQty(value)} м` : edge.key;
-  const width = Math.max(76, label.length * 8 + 20);
+  const width = Math.max(isCompact ? 72 : 80, label.length * (isCompact ? 7.4 : 8) + 20);
+  const height = isCompact ? 28 : 30;
+  const preferred = clampLabelPoint({
+    x: edge.midpoint.x + normal.x * offset + tangent.x * stagger,
+    y: edge.midpoint.y + normal.y * offset + tangent.y * stagger
+  });
+  return {
+    key: edge.key,
+    text: label,
+    width,
+    height,
+    x: preferred.x,
+    y: preferred.y,
+    preferred,
+    isCompact,
+    isActive
+  };
+}
+
+function sketchEdgeLabel(label) {
   return `
-    <g class="sketch-size-label${edge.length < 95 ? " is-compact" : ""}${isActive ? " is-active" : ""}" data-sketch-edge="${escapeHtml(edge.key)}">
-      <rect x="${point.x - width / 2}" y="${point.y - 15}" width="${width}" height="30" rx="12"></rect>
-      <text x="${point.x}" y="${point.y + 5}">${escapeHtml(label)}</text>
+    <g class="sketch-size-label${label.isCompact ? " is-compact" : ""}${label.isActive ? " is-active" : ""}" data-sketch-edge="${escapeHtml(label.key)}">
+      <rect x="${label.x - label.width / 2}" y="${label.y - label.height / 2}" width="${label.width}" height="${label.height}" rx="12"></rect>
+      <text x="${label.x}" y="${label.y + 5}">${escapeHtml(label.text)}</text>
     </g>
   `;
+}
+
+function labelBox(label, padding = 0) {
+  return {
+    left: label.x - label.width / 2 - padding,
+    right: label.x + label.width / 2 + padding,
+    top: label.y - label.height / 2 - padding,
+    bottom: label.y + label.height / 2 + padding
+  };
+}
+
+function separateSketchLabels(first, second, padding = 8) {
+  const a = labelBox(first, padding);
+  const b = labelBox(second, padding);
+  const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  if (overlapX <= 0 || overlapY <= 0) return false;
+
+  const dx = second.x - first.x || ((first.key || "").localeCompare(second.key || "") < 0 ? 1 : -1);
+  const dy = second.y - first.y || 1;
+  const xDirection = dx >= 0 ? 1 : -1;
+  const yDirection = dy >= 0 ? 1 : -1;
+  const pushX = ((overlapX / 2) + 3) * xDirection;
+  const pushY = ((overlapY / 2) + 3) * yDirection;
+  first.x -= pushX;
+  second.x += pushX;
+  first.y -= pushY;
+  second.y += pushY;
+  clampSketchLabel(first);
+  clampSketchLabel(second);
+  return true;
+}
+
+function pushLabelAwayFromBox(label, box, padding = 8) {
+  const labelRect = labelBox(label, padding);
+  const pointRect = {
+    left: box.x - box.width / 2,
+    right: box.x + box.width / 2,
+    top: box.y - box.height / 2,
+    bottom: box.y + box.height / 2
+  };
+  const overlapX = Math.min(labelRect.right, pointRect.right) - Math.max(labelRect.left, pointRect.left);
+  const overlapY = Math.min(labelRect.bottom, pointRect.bottom) - Math.max(labelRect.top, pointRect.top);
+  if (overlapX <= 0 || overlapY <= 0) return false;
+
+  const dx = label.x - box.x || 1;
+  const dy = label.y - box.y || 1;
+  if (overlapX < overlapY) {
+    label.x += (overlapX + 3) * (dx >= 0 ? 1 : -1);
+  } else {
+    label.y += (overlapY + 3) * (dy >= 0 ? 1 : -1);
+  }
+  return true;
+}
+
+function clampSketchLabel(label) {
+  const halfWidth = label.width / 2;
+  const halfHeight = label.height / 2;
+  label.x = Math.max(12 + halfWidth, Math.min(628 - halfWidth, label.x));
+  label.y = Math.max(16 + halfHeight, Math.min(404 - halfHeight, label.y));
+  return label;
 }
 
 function sketchMetaTemplate() {
