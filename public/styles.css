@@ -1712,6 +1712,15 @@ select {
   touch-action: pan-y;
 }
 
+.sketch-board.is-interacting,
+.sketch-board.is-interacting .sketch-svg {
+  touch-action: none;
+}
+
+body.is-sketch-interacting {
+  overscroll-behavior: contain;
+}
+
 .sketch-board.is-adding-point {
   border-color: rgba(243, 220, 168, 0.58);
   box-shadow:
@@ -1907,6 +1916,12 @@ select {
 
 .sketch-point {
   touch-action: none;
+}
+
+.sketch-point circle,
+.sketch-point text {
+  touch-action: none;
+  user-select: none;
 }
 
 .sketch-point text {
@@ -3570,6 +3585,20 @@ body[data-theme="dark"] .summary-total {
     padding-top: 148px;
   }
 
+  .installer-page.page-section {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .installer-page .shop-title {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .installer-workspace {
+    gap: 16px;
+  }
+
   .success-page {
     padding-top: 112px;
   }
@@ -3582,15 +3611,17 @@ body[data-theme="dark"] .summary-total {
   }
 
   .sketch-card {
-    padding-inline: 12px;
+    padding: 12px 6px 14px;
+    border-radius: 30px;
   }
 
   .sketch-board {
-    height: clamp(510px, 68vh, 610px);
-    min-height: 510px;
-    margin-inline: -8px;
-    padding: 8px;
-    border-radius: 32px;
+    height: min(78dvh, 720px);
+    min-height: 640px;
+    margin-inline: -2px;
+    padding: 4px;
+    border-radius: 28px;
+    background-size: 30px 30px;
   }
 
   .sketch-svg {

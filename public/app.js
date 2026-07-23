@@ -1980,9 +1980,35 @@ function bindInstallerSketch() {
   let suppressNextClick = false;
   let addPointMode = false;
 
+  const setSketchInteractionLock = (locked) => {
+    board.classList.toggle("is-interacting", locked);
+    document.body.classList.toggle("is-sketch-interacting", locked);
+  };
+
+  const clearSketchDrag = (event) => {
+    if (dragIndex !== null && dragMoved) {
+      suppressNextClick = true;
+      pushInstallerHistory(dragStartSketch);
+      state.installerSketch.shapeType = "custom";
+      state.installerSketch.aiDraft = false;
+      state.installerSnapGuide = null;
+      board.classList.remove("is-snapping");
+      syncDimensionsFromGeometry(dragStartScale);
+      renderSketch();
+    }
+    dragIndex = null;
+    dragStartSketch = null;
+    dragStartScale = null;
+    state.installerSnapGuide = null;
+    board.classList.remove("is-snapping");
+    setSketchInteractionLock(Boolean(addPointMode || state.installerHoleMode));
+    if (event?.pointerId !== undefined) board.releasePointerCapture?.(event.pointerId);
+  };
+
   const syncSketchModeButtons = () => {
     board.classList.toggle("is-adding-point", addPointMode);
     board.classList.toggle("is-placing-hole", Boolean(state.installerHoleMode));
+    setSketchInteractionLock(Boolean(addPointMode || state.installerHoleMode || dragIndex !== null));
     const pointButton = document.querySelector("[data-sketch-add-point]");
     if (pointButton) {
       pointButton.classList.toggle("is-active", addPointMode);
@@ -2014,6 +2040,7 @@ function bindInstallerSketch() {
   const renderSketch = () => {
     state.installerSnapGuide = null;
     board.classList.remove("is-snapping");
+    setSketchInteractionLock(false);
     cleanSketchAfterPointChange();
     normalizeSketchDimensionState();
     board.innerHTML = sketchTemplate();
@@ -2086,6 +2113,7 @@ function bindInstallerSketch() {
     board.classList.remove("is-snapping");
     state.installerSketch.shapeType = "custom";
     state.installerSketch.aiDraft = false;
+    setSketchInteractionLock(true);
     board.setPointerCapture?.(event.pointerId);
   });
 
@@ -2107,24 +2135,12 @@ function bindInstallerSketch() {
     if (meta) meta.innerHTML = sketchMetaTemplate();
   });
 
-  board.addEventListener("pointerup", (event) => {
-    if (dragIndex !== null && dragMoved) {
-      suppressNextClick = true;
-      pushInstallerHistory(dragStartSketch);
-      state.installerSketch.shapeType = "custom";
-      state.installerSketch.aiDraft = false;
-      state.installerSnapGuide = null;
-      board.classList.remove("is-snapping");
-      syncDimensionsFromGeometry(dragStartScale);
-      renderSketch();
-    }
-    dragIndex = null;
-    dragStartSketch = null;
-    dragStartScale = null;
-    state.installerSnapGuide = null;
-    board.classList.remove("is-snapping");
-    board.releasePointerCapture?.(event.pointerId);
-  });
+  board.addEventListener("pointerup", clearSketchDrag);
+  board.addEventListener("pointercancel", clearSketchDrag);
+  board.addEventListener("lostpointercapture", clearSketchDrag);
+  board.addEventListener("touchmove", (event) => {
+    if (dragIndex !== null || addPointMode || state.installerHoleMode) event.preventDefault();
+  }, { passive: false });
 
   document.querySelector("[data-sketch-reset]")?.addEventListener("click", () => {
     setAddPointMode(false);
