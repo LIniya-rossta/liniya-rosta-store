@@ -719,6 +719,13 @@ select:focus {
   box-shadow: 0 0 0 4px rgba(94, 231, 255, 0.16);
 }
 
+input[readonly] {
+  color: var(--ink);
+  background:
+    linear-gradient(135deg, rgba(243, 220, 168, 0.12), rgba(255, 255, 255, 0.07)),
+    rgba(255, 255, 255, 0.08);
+}
+
 select {
   appearance: none;
   background-image:
@@ -1874,8 +1881,27 @@ select {
   z-index: 8;
 }
 
-.material-picker.is-open {
+.material-picker.is-open,
+.installer-extra.is-open {
   z-index: 30;
+}
+
+.installer-extra {
+  position: relative;
+  z-index: 7;
+  display: grid;
+  gap: 12px;
+}
+
+.extra-head {
+  display: grid;
+  gap: 6px;
+}
+
+.extra-head small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .material-trigger,
@@ -1910,6 +1936,10 @@ select {
 }
 
 .material-picker.is-open .material-trigger i {
+  transform: rotate(225deg);
+}
+
+.installer-extra.is-open .extra-trigger i {
   transform: rotate(225deg);
 }
 
@@ -1971,6 +2001,98 @@ select {
     linear-gradient(135deg, rgba(32, 47, 61, 0.96), rgba(7, 17, 26, 0.98)),
     rgba(7, 17, 26, 0.94);
   box-shadow: 0 34px 80px rgba(0, 0, 0, 0.5), var(--inner-glass);
+}
+
+.extra-selected {
+  display: grid;
+  gap: 10px;
+}
+
+.extra-empty {
+  margin: 0;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  padding: 14px 16px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 800;
+}
+
+.extra-line {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: var(--inner-glass);
+}
+
+.extra-line .material-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+}
+
+.extra-line strong {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 950;
+}
+
+.extra-line span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.extra-qty {
+  display: grid;
+  grid-template-columns: 34px minmax(82px, 120px) 34px 34px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(7, 17, 26, 0.36);
+}
+
+.extra-qty button {
+  border: 0;
+  min-height: 38px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 1000;
+}
+
+.extra-qty label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: center;
+  border-inline: 1px solid var(--line);
+  padding: 0 7px;
+}
+
+.extra-qty input {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  text-align: center;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  font-weight: 950;
+}
+
+.extra-qty label span {
+  color: var(--steel);
+  font-size: 11px;
+  font-weight: 950;
 }
 
 .material-panel-head {
@@ -3140,6 +3262,15 @@ body[data-theme="dark"] .summary-total {
   .builder-side {
     min-width: 84px;
     padding: 9px 10px;
+  }
+
+  .extra-line {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .extra-qty {
+    grid-column: 1 / -1;
+    grid-template-columns: 42px minmax(0, 1fr) 42px 42px;
   }
 
   .builder-action-panel {

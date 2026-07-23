@@ -391,11 +391,15 @@ async function createInstallerRequest(payload) {
   if (!manager) throw publicError(400, "Выберите менеджера");
 
   const products = getCatalogProducts(await readJson(PRODUCTS_FILE, []));
-  const product = products.find((item) => item.id === trimText(payload.materialId, 160) && item.active !== false);
+  const activeProducts = new Map(
+    products.filter((item) => item.active !== false).map((item) => [item.id, item])
+  );
+  const product = activeProducts.get(trimText(payload.materialId, 160));
   if (!product) throw publicError(400, "Выберите материал из каталога");
   if (!isInstallerFilmMaterial(product)) {
     throw publicError(400, "В пространстве монтажника можно выбрать только пленку или полотно");
   }
+  const extraItems = cleanInstallerExtraItems(payload.extraItems, activeProducts);
 
   const installer = cleanCustomer(payload.installer || {});
   const object = {
@@ -441,6 +445,7 @@ async function createInstallerRequest(payload) {
       image: product.image || "",
       imageFit: product.imageFit || ""
     },
+    extraItems,
     object,
     fulfillment,
     sketch,
@@ -562,6 +567,31 @@ function cleanInstallerSketch(sketch) {
     warnings: cleanTextList(sketch.warnings, 8, 180),
     aiDraft: Boolean(sketch.aiDraft)
   };
+}
+
+function cleanInstallerExtraItems(source, activeProducts) {
+  if (!Array.isArray(source)) return [];
+  const byId = new Map();
+  for (const item of source.slice(0, 80)) {
+    const product = activeProducts.get(trimText(item.productId, 160));
+    if (!product) continue;
+    const unit = product.unit || "шт";
+    const qty = clampQuantity(item.qty, unit);
+    const previous = byId.get(product.id);
+    byId.set(product.id, {
+      productId: product.id,
+      title: product.title,
+      category: product.category,
+      price: Number(product.price || 0),
+      qty: previous ? previous.qty + qty : qty,
+      unit,
+      image: product.image || ""
+    });
+  }
+  return [...byId.values()].slice(0, 40).map((item) => ({
+    ...item,
+    qty: clampQuantity(item.qty, item.unit)
+  }));
 }
 
 function cleanInstallerSketchHoles(source) {
@@ -1926,6 +1956,7 @@ function formatOrderItem(item, index) {
 function formatInstallerRequest(request) {
   const installer = request.installer || {};
   const material = request.material || {};
+  const extraItems = Array.isArray(request.extraItems) ? request.extraItems : [];
   const object = request.object || {};
   const fulfillment = request.fulfillment || {};
   const sketch = request.sketch || {};
@@ -1958,6 +1989,13 @@ function formatInstallerRequest(request) {
       material.description ? `Описание: ${material.description}` : "",
       materialImageUrl ? `Фото материала: ${materialImageUrl}` : ""
     ],
+    extraItems.length
+      ? [
+          "Доптовары",
+          ...extraItems.map(formatOrderItem),
+          `Итого доптоваров: ${formatMoney(extraItems.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0))}`
+        ]
+      : [],
     [
       "Объект",
       `Адрес: ${object.address || "не указан"}`,

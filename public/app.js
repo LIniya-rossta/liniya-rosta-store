@@ -85,6 +85,7 @@ const state = {
   managersLoaded: false,
   installerSketch: createDefaultSketch(),
   installerHistory: [],
+  installerExtras: {},
   installerPhoto: null
 };
 
@@ -359,6 +360,7 @@ function renderMeasure() {
 function renderInstaller() {
   const ready = kyrgyzInputDateTime();
   const materials = installerMaterials();
+  const calculatedStats = sketchMeasuredStats(state.installerSketch.points);
 
   elements.app.innerHTML = `
     <section class="installer-page page-section">
@@ -418,8 +420,9 @@ function renderInstaller() {
               ${managerOptionsTemplate()}
             </select>
           </label>
-          <label><span>Площадь, м²</span><input name="area" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Например 42.5"></label>
-          <label><span>Периметр, м</span><input name="perimeter" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Например 28.4"></label>
+          <label><span>Площадь, м²</span><input name="area" type="number" min="0" step="0.1" inputmode="decimal" value="${escapeHtml(inputQtyValue(calculatedStats.area))}" data-installer-area readonly></label>
+          <label><span>Периметр, м</span><input name="perimeter" type="number" min="0" step="0.1" inputmode="decimal" value="${escapeHtml(inputQtyValue(calculatedStats.perimeter))}" data-installer-perimeter readonly></label>
+          ${installerExtrasTemplate()}
 
           <fieldset>
             <legend>Получение</legend>
@@ -467,6 +470,8 @@ function renderInstaller() {
   bindInstallerSketch();
   bindInstallerPhoto();
   bindInstallerMaterialPicker();
+  bindInstallerExtras();
+  syncInstallerCalculatedFields();
   document.getElementById("installerForm")?.addEventListener("submit", submitInstallerRequest);
 }
 
@@ -719,6 +724,97 @@ function materialPickerTemplate(materials) {
           ${materials.map((product, index) => materialOptionTemplate(product, index === 0)).join("")}
         </div>
       </div>
+    </div>
+  `;
+}
+
+function installerExtrasTemplate() {
+  const products = getStoreProducts().filter((product) => product.active !== false);
+  const categories = ["Все", ...new Set(products.map((product) => product.category || "Без категории"))];
+  return `
+    <div class="installer-extra full" id="installerExtraProducts">
+      <div class="extra-head">
+        <span class="field-title">Доптовары</span>
+        <small>Добавьте профиль, свет, багет, крепеж или любой другой товар из каталога.</small>
+      </div>
+      <button class="material-trigger extra-trigger" type="button" aria-expanded="false" data-extra-trigger>
+        <span class="material-thumb is-empty">+</span>
+        <span class="material-trigger-text">
+          <strong>Добавить товар из каталога</strong>
+          <small>${products.length ? `${products.length} позиций доступно` : "Каталог пока загружается"}</small>
+        </span>
+        <i aria-hidden="true"></i>
+      </button>
+      <div class="material-panel" data-extra-panel hidden>
+        <div class="material-panel-head">
+          <input type="search" inputmode="search" placeholder="Найти доптовар..." data-extra-search>
+        </div>
+        <div class="material-tabs" aria-label="Категории доптоваров">
+          ${categories.map((category, index) => `<button type="button" data-extra-category="${escapeHtml(category)}" class="${index === 0 ? "is-active" : ""}">${escapeHtml(category)}</button>`).join("")}
+        </div>
+        <div class="material-options">
+          ${products.map((product) => installerExtraOptionTemplate(product)).join("")}
+        </div>
+      </div>
+      <div class="extra-selected" id="installerExtraSelected">
+        ${installerExtraSelectedTemplate()}
+      </div>
+    </div>
+  `;
+}
+
+function installerExtraOptionTemplate(product) {
+  const searchable = `${product.title || ""} ${product.category || ""} ${product.description || ""} ${product.stock || ""}`.toLowerCase();
+  return `
+    <button
+      class="material-option extra-option"
+      type="button"
+      data-extra-option="${escapeHtml(product.id)}"
+      data-extra-category-value="${escapeHtml(product.category || "Без категории")}"
+      data-extra-search-value="${escapeHtml(searchable)}"
+    >
+      ${materialThumb(product)}
+      <span class="material-option-body">
+        <span class="material-option-top">
+          <strong>${escapeHtml(product.title || "Товар")}</strong>
+          <em>${escapeHtml(product.price ? `${formatMoney(product.price)} / ${product.unit || "шт"}` : "Цена по запросу")}</em>
+        </span>
+        <small>${escapeHtml(materialMeta(product))}</small>
+        ${product.description ? `<span class="material-description">${escapeHtml(product.description)}</span>` : ""}
+      </span>
+    </button>
+  `;
+}
+
+function installerExtraSelectedTemplate() {
+  const lines = getInstallerExtraLines();
+  if (!lines.length) {
+    return `<p class="extra-empty">Доптовары пока не выбраны.</p>`;
+  }
+  return lines.map(({ product, qty }) => `
+    <article class="extra-line">
+      ${materialThumb(product)}
+      <div>
+        <strong>${escapeHtml(product.title || "Товар")}</strong>
+        <span>${escapeHtml(product.category || "Каталог")} · ${product.price ? `${formatMoney(product.price)} / ${escapeHtml(product.unit || "шт")}` : "Цена по запросу"}</span>
+      </div>
+      ${installerExtraQtyControl(product, qty)}
+    </article>
+  `).join("");
+}
+
+function installerExtraQtyControl(product, qty) {
+  const unit = product.unit || "шт";
+  const measured = isMeasuredUnit(unit);
+  return `
+    <div class="extra-qty${measured ? " is-measured" : ""}">
+      <button type="button" data-extra-minus="${escapeHtml(product.id)}" aria-label="Уменьшить количество">−</button>
+      <label>
+        <input type="number" min="${measured ? "0.1" : "1"}" step="${measured ? "0.1" : "1"}" inputmode="decimal" value="${escapeHtml(inputQtyValue(qty))}" data-extra-qty-input="${escapeHtml(product.id)}">
+        <span>${escapeHtml(unit)}</span>
+      </label>
+      <button type="button" data-extra-plus="${escapeHtml(product.id)}" aria-label="Увеличить количество">+</button>
+      <button type="button" data-extra-remove="${escapeHtml(product.id)}" aria-label="Удалить товар">×</button>
     </div>
   `;
 }
@@ -1320,6 +1416,118 @@ function bindInstallerMaterialPicker() {
   });
 }
 
+function bindInstallerExtras() {
+  const root = document.getElementById("installerExtraProducts");
+  const trigger = root?.querySelector("[data-extra-trigger]");
+  const panel = root?.querySelector("[data-extra-panel]");
+  const search = root?.querySelector("[data-extra-search]");
+  const categoryButtons = [...(root?.querySelectorAll("[data-extra-category]") || [])];
+  const optionButtons = [...(root?.querySelectorAll("[data-extra-option]") || [])];
+  if (!root || !trigger || !panel) return;
+
+  let activeCategory = "Все";
+  const close = () => {
+    root.classList.remove("is-open");
+    panel.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  };
+  const open = () => {
+    root.classList.add("is-open");
+    panel.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    search?.focus();
+  };
+  const applyFilters = () => {
+    const query = String(search?.value || "").trim().toLowerCase();
+    optionButtons.forEach((button) => {
+      const categoryMatch = activeCategory === "Все" || button.dataset.extraCategoryValue === activeCategory;
+      const searchMatch = !query || String(button.dataset.extraSearchValue || "").includes(query);
+      button.hidden = !(categoryMatch && searchMatch);
+    });
+  };
+
+  trigger.addEventListener("click", () => {
+    if (panel.hidden) open();
+    else close();
+  });
+  search?.addEventListener("input", applyFilters);
+  categoryButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      activeCategory = button.dataset.extraCategory || "Все";
+      categoryButtons.forEach((item) => item.classList.toggle("is-active", item === button));
+      applyFilters();
+    });
+  });
+  optionButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      addInstallerExtra(button.dataset.extraOption);
+      close();
+    });
+  });
+  document.addEventListener("click", (event) => {
+    if (!root.contains(event.target)) close();
+  });
+  bindInstallerExtraLineControls();
+}
+
+function bindInstallerExtraLineControls() {
+  document.querySelectorAll("[data-extra-minus]").forEach((button) => {
+    button.addEventListener("click", () => setInstallerExtraQty(button.dataset.extraMinus, (state.installerExtras[button.dataset.extraMinus] || 0) - qtyStep(button.dataset.extraMinus)));
+  });
+  document.querySelectorAll("[data-extra-plus]").forEach((button) => {
+    button.addEventListener("click", () => setInstallerExtraQty(button.dataset.extraPlus, (state.installerExtras[button.dataset.extraPlus] || 0) + qtyStep(button.dataset.extraPlus)));
+  });
+  document.querySelectorAll("[data-extra-remove]").forEach((button) => {
+    button.addEventListener("click", () => setInstallerExtraQty(button.dataset.extraRemove, 0));
+  });
+  document.querySelectorAll("[data-extra-qty-input]").forEach((input) => {
+    input.addEventListener("change", () => setInstallerExtraQty(input.dataset.extraQtyInput, input.value));
+    input.addEventListener("blur", () => setInstallerExtraQty(input.dataset.extraQtyInput, input.value));
+  });
+}
+
+function refreshInstallerExtraSelected() {
+  const selected = document.getElementById("installerExtraSelected");
+  if (!selected) return;
+  selected.innerHTML = installerExtraSelectedTemplate();
+  bindInstallerExtraLineControls();
+}
+
+function addInstallerExtra(productId) {
+  const product = findProduct(productId);
+  if (!product || product.active === false) return;
+  setInstallerExtraQty(productId, (state.installerExtras[productId] || 0) + defaultQty(product));
+  toast("Доптовар добавлен в заявку.");
+}
+
+function setInstallerExtraQty(productId, qty) {
+  const product = findProduct(productId);
+  const numericQty = normalizeQty(product || {}, qty);
+  if (!product || numericQty <= 0) delete state.installerExtras[productId];
+  else state.installerExtras[productId] = numericQty;
+  refreshInstallerExtraSelected();
+}
+
+function getInstallerExtraLines() {
+  const products = getStoreProducts();
+  return Object.entries(state.installerExtras || {})
+    .map(([productId, qty]) => {
+      const product = products.find((item) => item.id === productId && item.active !== false);
+      return product ? { product, qty } : null;
+    })
+    .filter(Boolean);
+}
+
+function syncInstallerCalculatedFields() {
+  const form = document.getElementById("installerForm");
+  if (!form) return;
+  const stats = sketchMeasuredStats(state.installerSketch.points);
+  const areaInput = form.querySelector("[data-installer-area]");
+  const perimeterInput = form.querySelector("[data-installer-perimeter]");
+  if (areaInput) areaInput.value = inputQtyValue(stats.area);
+  if (perimeterInput) perimeterInput.value = inputQtyValue(stats.perimeter);
+}
+
 function bindInstallerSketch() {
   const board = document.getElementById("sketchBoard");
   const meta = document.getElementById("sketchMeta");
@@ -1350,6 +1558,7 @@ function bindInstallerSketch() {
     if (meta) meta.innerHTML = sketchMetaTemplate();
     if (builder) builder.innerHTML = sketchBuilderTemplate();
     if (dimensions) dimensions.innerHTML = sketchDimensionsTemplate();
+    syncInstallerCalculatedFields();
     bindSketchDimensionInputs();
   };
 
@@ -1538,6 +1747,7 @@ function bindSketchDimensionInputs() {
     if (meta) meta.innerHTML = sketchMetaTemplate();
     if (builder) builder.innerHTML = sketchBuilderTemplate();
     if (dimensions) dimensions.innerHTML = sketchDimensionsTemplate();
+    syncInstallerCalculatedFields();
     bindSketchDimensionInputs();
   };
 
@@ -1707,8 +1917,9 @@ async function submitInstallerRequest(event) {
   const method = form.get("method");
   const materialId = form.get("materialId");
   const measuredStats = sketchMeasuredStats(state.installerSketch.points);
-  const objectArea = form.get("area") || measuredStats.area;
-  const objectPerimeter = form.get("perimeter") || measuredStats.perimeter;
+  const objectArea = measuredStats.area;
+  const objectPerimeter = measuredStats.perimeter;
+  const extraItems = getInstallerExtraLines().map(({ product, qty }) => ({ productId: product.id, qty }));
 
   if (!materialId) return setNote(note, "Выберите материал.", true);
   if (!readyDate || !readyTime) return setNote(note, "Выберите дату и время готовности.", true);
@@ -1740,6 +1951,7 @@ async function submitInstallerRequest(event) {
       readyTime,
       timeZone: KYRGYZ_TIME_ZONE
     },
+    extraItems,
     sketch: {
       points: state.installerSketch.points,
       dimensions: state.installerSketch.dimensions,
@@ -1766,6 +1978,7 @@ async function submitInstallerRequest(event) {
     if (!response.ok) throw new Error(data.error || "Не удалось отправить заявку");
     state.installerPhoto = null;
     state.installerSketch = createDefaultSketch();
+    state.installerExtras = {};
     saveLastOrder({ id: data.request?.id });
     navigate(`/success?order=${encodeURIComponent(data.request?.id || "")}`);
   } catch (error) {
