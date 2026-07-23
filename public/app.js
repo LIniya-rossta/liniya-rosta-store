@@ -92,7 +92,8 @@ const state = {
   installerExtras: {},
   installerPhoto: null,
   installerHoleMode: null,
-  installerDimensionDrafts: {}
+  installerDimensionDrafts: {},
+  installerDimensionObserver: null
 };
 
 const elements = {
@@ -2088,6 +2089,14 @@ function applyInstallerAiDraft(draft) {
 }
 
 function bindSketchDimensionInputs(options = {}) {
+  const rerenderSketchPreview = () => {
+    const board = document.getElementById("sketchBoard");
+    const meta = document.getElementById("sketchMeta");
+    if (board) board.innerHTML = sketchTemplate();
+    if (meta) meta.innerHTML = sketchMetaTemplate();
+    syncInstallerCalculatedFields();
+  };
+
   const rerenderSketchSurface = () => {
     const board = document.getElementById("sketchBoard");
     const meta = document.getElementById("sketchMeta");
@@ -2101,6 +2110,19 @@ function bindSketchDimensionInputs(options = {}) {
     bindSketchDimensionInputs(options);
   };
 
+  const syncDimensionControlValues = (activeInput) => {
+    document.querySelectorAll("[data-sketch-dimension]").forEach((input) => {
+      if (input === activeInput) return;
+      input.value = inputDimensionValue(state.installerSketch.dimensions[input.dataset.sketchDimension]);
+      input.dataset.liveObservedValue = input.value;
+    });
+    document.querySelectorAll("[data-sketch-diagonal]").forEach((input) => {
+      if (input === activeInput) return;
+      input.value = inputDimensionValue(state.installerSketch.diagonals[input.dataset.sketchDiagonal]);
+      input.dataset.liveObservedValue = input.value;
+    });
+  };
+
   const draftKeyForInput = (input, type) => {
     const key = type === "diagonal" ? input.dataset.sketchDiagonal : input.dataset.sketchDimension;
     return key ? `${type}:${key}` : "";
@@ -2112,7 +2134,7 @@ function bindSketchDimensionInputs(options = {}) {
     state.installerDimensionDrafts[draftKey] = input.value;
   };
 
-  const commitDimensionInput = (input, type) => {
+  const commitDimensionInput = (input, type, mode = "final") => {
     const store = type === "diagonal" ? state.installerSketch.diagonals : state.installerSketch.dimensions;
     const key = type === "diagonal" ? input.dataset.sketchDiagonal : input.dataset.sketchDimension;
     const draftKey = draftKeyForInput(input, type);
@@ -2122,9 +2144,18 @@ function bindSketchDimensionInputs(options = {}) {
     const value = parseDimension(rawValue);
     const current = Number(store[key] || 0);
     if (type === "dimension") selectSketchEdge(key);
-    if (draftKey) delete state.installerDimensionDrafts[draftKey];
-    if (value === current) return;
-    pushInstallerHistory();
+    if (!value) return;
+    if (value === current) {
+      if (mode !== "live") {
+        if (draftKey) delete state.installerDimensionDrafts[draftKey];
+        rerenderSketchSurface();
+      }
+      return;
+    }
+    if (!input.dataset.dimensionHistoryCaptured) {
+      pushInstallerHistory();
+      input.dataset.dimensionHistoryCaptured = "1";
+    }
     if (value) {
       store[key] = value;
       if (type === "dimension") syncRectangleDimensionPair(key, value);
@@ -2133,21 +2164,60 @@ function bindSketchDimensionInputs(options = {}) {
       if (type === "dimension") syncRectangleDimensionPair(key, 0);
     }
     applySketchDimensionsToGeometry();
-    rerenderSketchSurface();
+    if (mode === "live") {
+      rerenderSketchPreview();
+      syncDimensionControlValues(input);
+    } else {
+      if (draftKey) delete state.installerDimensionDrafts[draftKey];
+      rerenderSketchSurface();
+    }
   };
   const commitDimensionNow = (input, type) => {
     clearTimeout(inputTimers.get(input));
     commitDimensionInput(input, type);
   };
   const inputTimers = new WeakMap();
+  const scheduleLiveDimensionCommit = (input, type) => {
+    clearTimeout(inputTimers.get(input));
+    rememberDimensionDraft(input, type);
+    const rawValue = String(input.value || "").trim();
+    if (!rawValue || /[,.]$/.test(rawValue) || !parseDimension(rawValue)) return;
+    commitDimensionInput(input, type, "live");
+  };
+  const startDimensionObserver = () => {
+    if (state.installerDimensionObserver) clearInterval(state.installerDimensionObserver);
+    state.installerDimensionObserver = setInterval(() => {
+      if (normalizePath(window.location.pathname) !== "/installer") {
+        clearInterval(state.installerDimensionObserver);
+        state.installerDimensionObserver = null;
+        return;
+      }
+
+      document.querySelectorAll("[data-sketch-dimension], [data-sketch-diagonal]").forEach((input) => {
+        const type = input.dataset.sketchDimension ? "dimension" : "diagonal";
+        if (input.dataset.liveObservedValue === undefined) {
+          input.dataset.liveObservedValue = input.value;
+          return;
+        }
+        if (input.value === input.dataset.liveObservedValue) return;
+        input.dataset.liveObservedValue = input.value;
+        scheduleLiveDimensionCommit(input, type);
+      });
+    }, 260);
+  };
 
   document.querySelectorAll("[data-sketch-dimension]").forEach((input) => {
     const commit = () => commitDimensionNow(input, "dimension");
-    input.addEventListener("focus", () => selectSketchEdge(input.dataset.sketchDimension));
-    input.addEventListener("input", () => {
-      clearTimeout(inputTimers.get(input));
-      rememberDimensionDraft(input, "dimension");
+    const schedule = () => scheduleLiveDimensionCommit(input, "dimension");
+    input.dataset.liveObservedValue = input.value;
+    input.addEventListener("focus", () => {
+      selectSketchEdge(input.dataset.sketchDimension);
+      input.dataset.dimensionHistoryCaptured = "";
     });
+    input.addEventListener("beforeinput", () => setTimeout(schedule, 0));
+    input.addEventListener("input", schedule);
+    input.addEventListener("keyup", schedule);
+    input.addEventListener("paste", () => setTimeout(schedule, 0));
     input.addEventListener("change", commit);
     input.addEventListener("blur", commit);
     input.addEventListener("keydown", (event) => {
@@ -2161,10 +2231,15 @@ function bindSketchDimensionInputs(options = {}) {
 
   document.querySelectorAll("[data-sketch-diagonal]").forEach((input) => {
     const commit = () => commitDimensionNow(input, "diagonal");
-    input.addEventListener("input", () => {
-      clearTimeout(inputTimers.get(input));
-      rememberDimensionDraft(input, "diagonal");
+    const schedule = () => scheduleLiveDimensionCommit(input, "diagonal");
+    input.dataset.liveObservedValue = input.value;
+    input.addEventListener("focus", () => {
+      input.dataset.dimensionHistoryCaptured = "";
     });
+    input.addEventListener("beforeinput", () => setTimeout(schedule, 0));
+    input.addEventListener("input", schedule);
+    input.addEventListener("keyup", schedule);
+    input.addEventListener("paste", () => setTimeout(schedule, 0));
     input.addEventListener("change", commit);
     input.addEventListener("blur", commit);
     input.addEventListener("keydown", (event) => {
@@ -2175,6 +2250,7 @@ function bindSketchDimensionInputs(options = {}) {
       }
     });
   });
+  startDimensionObserver();
 
   document.querySelectorAll("[data-select-edge]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2186,7 +2262,8 @@ function bindSketchDimensionInputs(options = {}) {
   document.querySelectorAll("[data-commit-dimension]").forEach((button) => {
     const commitButtonDimension = (event) => {
       event?.preventDefault();
-      const input = [...document.querySelectorAll("[data-sketch-dimension]")]
+      const input = button.closest(".dimension-item")?.querySelector("[data-sketch-dimension]")
+        || [...document.querySelectorAll("[data-sketch-dimension]")]
         .find((item) => item.dataset.sketchDimension === button.dataset.commitDimension);
       if (!input) return;
       commitDimensionNow(input, "dimension");
