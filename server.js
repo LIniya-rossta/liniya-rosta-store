@@ -419,9 +419,11 @@ async function createInstallerRequest(payload) {
     throw publicError(400, "Укажите адрес доставки");
   }
 
-  const sketch = cleanInstallerSketch(payload.sketch || {});
+  const sketches = cleanInstallerSketches(payload.sketches, payload.sketch || {});
+  const sketch = sketches[0] || cleanInstallerSketch(payload.sketch || {});
   const photo = await saveInstallerSketchPhoto(payload.sketchPhoto);
-  if (sketch.points.length < 3 && !photo) {
+  const hasSketch = sketches.some((item) => Array.isArray(item.points) && item.points.length >= 3);
+  if (!hasSketch && !photo) {
     throw publicError(400, "Добавьте чертеж или фото чертежа");
   }
 
@@ -449,11 +451,13 @@ async function createInstallerRequest(payload) {
     object,
     fulfillment,
     sketch,
+    sketches,
     sketchPhoto: photo,
     source: "installer-page",
     createdAt: new Date().toISOString()
   };
-  request.sketchDrawing = await saveGeneratedInstallerSketch(request);
+  request.sketchDrawings = await saveGeneratedInstallerSketches(request);
+  request.sketchDrawing = request.sketchDrawings[0] || null;
 
   requests.unshift(request);
   await writeJson(INSTALLER_REQUESTS_FILE, requests);
@@ -556,6 +560,8 @@ function cleanInstallerSketch(sketch) {
   }
 
   return {
+    title: trimText(sketch.title, 80),
+    order: clampNumber(sketch.order, 1, 99),
     points,
     dimensions,
     diagonals: cleanDimensionMap(sketch.diagonals || {}, diagonals.map((diagonal) => diagonal.key)),
@@ -567,6 +573,20 @@ function cleanInstallerSketch(sketch) {
     warnings: cleanTextList(sketch.warnings, 8, 180),
     aiDraft: Boolean(sketch.aiDraft)
   };
+}
+
+function cleanInstallerSketches(source, fallbackSketch) {
+  const rawSketches = Array.isArray(source) && source.length ? source : (fallbackSketch ? [fallbackSketch] : []);
+  return rawSketches.slice(0, 12).map((sketch, index) => {
+    const cleaned = cleanInstallerSketch({
+      ...sketch,
+      title: sketch.title || `Полотно ${index + 1}`,
+      order: sketch.order || index + 1
+    });
+    cleaned.title = cleaned.title || `Полотно ${index + 1}`;
+    cleaned.order = index + 1;
+    return cleaned;
+  });
 }
 
 function cleanInstallerExtraItems(source, activeProducts) {
@@ -811,17 +831,24 @@ async function saveInstallerSketchPhoto(photo) {
   };
 }
 
-async function saveGeneratedInstallerSketch(request) {
-  if (!Array.isArray(request.sketch?.points) || request.sketch.points.length < 2) return null;
+async function saveGeneratedInstallerSketches(request) {
+  const sketches = Array.isArray(request.sketches) && request.sketches.length ? request.sketches : [request.sketch];
+  const drawableSketches = sketches.filter((sketch) => Array.isArray(sketch?.points) && sketch.points.length >= 2);
+  if (!drawableSketches.length) return [];
   const folder = path.join(UPLOAD_DIR, "installer");
   await fs.promises.mkdir(folder, { recursive: true });
-  const filename = `${request.id}-drawing.svg`;
-  await fs.promises.writeFile(path.join(folder, filename), installerSketchSvg(request));
-  return {
-    name: filename,
-    type: "image/svg+xml",
-    url: `/uploads/installer/${filename}`
-  };
+  const drawings = [];
+  for (const [index, sketch] of drawableSketches.entries()) {
+    const filename = `${request.id}-drawing-${index + 1}.svg`;
+    await fs.promises.writeFile(path.join(folder, filename), installerSketchSvg({ ...request, sketch }));
+    drawings.push({
+      name: filename,
+      title: sketch.title || `Полотно ${index + 1}`,
+      type: "image/svg+xml",
+      url: `/uploads/installer/${filename}`
+    });
+  }
+  return drawings;
 }
 
 function installerSketchSvg(request) {
@@ -852,7 +879,7 @@ function installerSketchSvg(request) {
   <rect width="1280" height="900" fill="#07111a"/>
   <rect x="38" y="38" width="1204" height="824" rx="42" fill="#101b25" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
   <text x="76" y="104" fill="#f3dca8" font-family="Arial, sans-serif" font-size="28" font-weight="800">${escapeXml(request.id)}</text>
-  <text x="76" y="154" fill="#f6fbff" font-family="Arial, sans-serif" font-size="42" font-weight="900">${escapeXml(request.material?.title || "Чертеж полотна")}</text>
+  <text x="76" y="154" fill="#f6fbff" font-family="Arial, sans-serif" font-size="42" font-weight="900">${escapeXml(request.sketch?.title || request.material?.title || "Чертеж полотна")}</text>
   <text x="76" y="202" fill="#91a4b3" font-family="Arial, sans-serif" font-size="24">${escapeXml(request.installer?.name || "")} · ${escapeXml(request.installer?.phone || "")}</text>
   <g transform="translate(70 265) scale(1.55)">
     <rect x="0" y="0" width="640" height="420" rx="28" fill="url(#grid)" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
@@ -1953,6 +1980,26 @@ function formatOrderItem(item, index) {
   return `${index + 1}. ${item.title}\n   Кол-во: ${qty}\n   Сумма: ${sum}`;
 }
 
+function formatInstallerSketchSection(sketch, index, drawingUrl) {
+  const dimensionLines = Object.entries(sketch.dimensions || {}).map(([key, value]) => `${key}: ${formatQty(value)} м`);
+  const diagonalLines = Object.entries(sketch.diagonals || {}).map(([key, value]) => `${key}: ${formatQty(value)} м`);
+  const holeLines = (sketch.holes || []).map((hole, holeIndex) => `${holeIndex + 1}. ${holeLabel(hole)} (${Math.round(hole.x)}, ${Math.round(hole.y)})`);
+  const warningLines = (sketch.warnings || []).map((warning) => `- ${warning}`);
+  return [
+    `Чертеж ${index + 1}: ${sketch.title || `Полотно ${index + 1}`}`,
+    `Точек: ${Array.isArray(sketch.points) ? sketch.points.length : 0}`,
+    sketch.area ? `Площадь: ${formatQty(sketch.area)} м²` : "",
+    sketch.perimeter ? `Периметр: ${formatQty(sketch.perimeter)} м` : "",
+    dimensionLines.length ? `Стороны:\n${dimensionLines.join("\n")}` : "",
+    diagonalLines.length ? `Диагонали:\n${diagonalLines.join("\n")}` : "",
+    holeLines.length ? `Отверстия:\n${holeLines.join("\n")}` : "",
+    sketch.aiDraft ? `AI-черновик${sketch.aiConfidence ? `, уверенность ${Math.round(sketch.aiConfidence * 100)}%` : ""}` : "",
+    sketch.note ? `Заметки: ${sketch.note}` : "",
+    warningLines.length ? `Проверить:\n${warningLines.join("\n")}` : "",
+    drawingUrl ? `SVG: ${drawingUrl}` : ""
+  ];
+}
+
 function formatInstallerRequest(request) {
   const installer = request.installer || {};
   const material = request.material || {};
@@ -1960,14 +2007,13 @@ function formatInstallerRequest(request) {
   const object = request.object || {};
   const fulfillment = request.fulfillment || {};
   const sketch = request.sketch || {};
+  const sketches = Array.isArray(request.sketches) && request.sketches.length ? request.sketches : [sketch];
   const method = fulfillment.method === "pickup" ? "Самовывоз" : "Доставка";
   const photoUrl = request.sketchPhoto?.url ? new URL(request.sketchPhoto.url, PUBLIC_BASE_URL).toString() : "";
-  const drawingUrl = request.sketchDrawing?.url ? new URL(request.sketchDrawing.url, PUBLIC_BASE_URL).toString() : "";
+  const drawingUrls = Array.isArray(request.sketchDrawings)
+    ? request.sketchDrawings.map((drawing) => drawing?.url ? new URL(drawing.url, PUBLIC_BASE_URL).toString() : "")
+    : [request.sketchDrawing?.url ? new URL(request.sketchDrawing.url, PUBLIC_BASE_URL).toString() : ""];
   const materialImageUrl = material.image ? new URL(material.image, PUBLIC_BASE_URL).toString() : "";
-  const dimensionLines = Object.entries(sketch.dimensions || {}).map(([key, value]) => `${key}: ${formatQty(value)} м`);
-  const diagonalLines = Object.entries(sketch.diagonals || {}).map(([key, value]) => `${key}: ${formatQty(value)} м`);
-  const holeLines = (sketch.holes || []).map((hole, index) => `${index + 1}. ${holeLabel(hole)} (${Math.round(hole.x)}, ${Math.round(hole.y)})`);
-  const warningLines = (sketch.warnings || []).map((warning) => `- ${warning}`);
 
   const sections = [
     [
@@ -1999,6 +2045,7 @@ function formatInstallerRequest(request) {
     [
       "Объект",
       `Адрес: ${object.address || "не указан"}`,
+      `Чертежей: ${sketches.length}`,
       object.area ? `Площадь: ${formatQty(object.area)} м²` : "",
       object.perimeter ? `Периметр: ${formatQty(object.perimeter)} м` : ""
     ],
@@ -2008,18 +2055,8 @@ function formatInstallerRequest(request) {
       fulfillment.deliveryAddress ? `Адрес доставки: ${fulfillment.deliveryAddress}` : "",
       formatReadyWindow(fulfillment) ? `Готовность: ${formatReadyWindow(fulfillment)}` : ""
     ],
-    [
-      "Чертеж",
-      `Точек: ${Array.isArray(sketch.points) ? sketch.points.length : 0}`,
-      dimensionLines.length ? `Стороны:\n${dimensionLines.join("\n")}` : "",
-      diagonalLines.length ? `Диагонали:\n${diagonalLines.join("\n")}` : "",
-      holeLines.length ? `Отверстия:\n${holeLines.join("\n")}` : "",
-      sketch.aiDraft ? `AI-черновик${sketch.aiConfidence ? `, уверенность ${Math.round(sketch.aiConfidence * 100)}%` : ""}` : "",
-      sketch.note ? `Заметки: ${sketch.note}` : "",
-      warningLines.length ? `Проверить:\n${warningLines.join("\n")}` : "",
-      drawingUrl ? `SVG: ${drawingUrl}` : "",
-      photoUrl ? `Фото: ${photoUrl}` : ""
-    ],
+    ...sketches.map((item, index) => formatInstallerSketchSection(item, index, drawingUrls[index] || "")),
+    photoUrl ? ["Фото исходного чертежа", photoUrl] : [],
     object.comment ? ["Комментарий", object.comment] : [],
     [`Создан: ${formatKyrgyzDateTime(request.createdAt)} Кыргызстан`]
   ];

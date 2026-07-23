@@ -73,6 +73,8 @@ const reviews = [
   }
 ];
 
+const initialInstallerSketch = prepareInstallerSketch(createDefaultSketch(), 0);
+
 const state = {
   products: [],
   category: "Все",
@@ -83,8 +85,10 @@ const state = {
   managerOptions: [],
   managersLoading: false,
   managersLoaded: false,
-  installerSketch: createDefaultSketch(),
-  installerHistory: [],
+  installerSketches: [initialInstallerSketch],
+  activeInstallerSketchIndex: 0,
+  installerSketch: initialInstallerSketch,
+  installerHistory: {},
   installerExtras: {},
   installerPhoto: null
 };
@@ -358,9 +362,10 @@ function renderMeasure() {
 }
 
 function renderInstaller() {
+  ensureInstallerSketches();
   const ready = kyrgyzInputDateTime();
   const materials = installerMaterials();
-  const calculatedStats = sketchMeasuredStats(state.installerSketch.points);
+  const calculatedStats = installerSketchesMeasuredStats();
 
   elements.app.innerHTML = `
     <section class="installer-page page-section">
@@ -387,6 +392,9 @@ function renderInstaller() {
               <button type="button" data-sketch-reset>Сброс</button>
               <button type="button" data-sketch-undo>Назад</button>
             </div>
+          </div>
+          <div class="sketch-tabs" id="installerSketchTabs">
+            ${installerSketchTabsTemplate()}
           </div>
           <div class="sketch-board" id="sketchBoard">
             ${sketchTemplate()}
@@ -1278,6 +1286,20 @@ function dimensionPlaceholder(value) {
   return formatQty(number);
 }
 
+function createInstallerSketchId() {
+  return `sketch-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function prepareInstallerSketch(sketch, index = 0) {
+  const next = cloneInstallerSketch(sketch || createDefaultSketch());
+  next.id = next.id || createInstallerSketchId();
+  next.title = next.title || `Полотно ${index + 1}`;
+  next.dimensions = next.dimensions || {};
+  next.diagonals = next.diagonals || {};
+  next.holes = Array.isArray(next.holes) ? next.holes : [];
+  return next;
+}
+
 function cloneInstallerSketch(sketch = state.installerSketch) {
   return {
     ...sketch,
@@ -1289,17 +1311,165 @@ function cloneInstallerSketch(sketch = state.installerSketch) {
   };
 }
 
+function ensureInstallerSketches() {
+  if (!Array.isArray(state.installerSketches) || !state.installerSketches.length) {
+    state.installerSketches = [prepareInstallerSketch(state.installerSketch || createDefaultSketch(), 0)];
+  }
+  state.installerSketches = state.installerSketches.map((sketch, index) => prepareInstallerSketch(sketch, index));
+  state.activeInstallerSketchIndex = Math.max(0, Math.min(state.activeInstallerSketchIndex || 0, state.installerSketches.length - 1));
+  state.installerSketch = state.installerSketches[state.activeInstallerSketchIndex];
+}
+
+function replaceActiveInstallerSketch(sketch) {
+  ensureInstallerSketches();
+  const current = state.installerSketch || {};
+  const next = prepareInstallerSketch({
+    ...sketch,
+    id: current.id,
+    title: current.title
+  }, state.activeInstallerSketchIndex);
+  state.installerSketches[state.activeInstallerSketchIndex] = next;
+  state.installerSketch = next;
+  normalizeSketchDimensionState();
+}
+
+function addInstallerSketch() {
+  ensureInstallerSketches();
+  const next = prepareInstallerSketch(createDefaultSketch(), state.installerSketches.length);
+  state.installerSketches.push(next);
+  state.activeInstallerSketchIndex = state.installerSketches.length - 1;
+  state.installerSketch = next;
+  toast(`${next.title} добавлено.`);
+}
+
+function renumberInstallerSketchTitles() {
+  state.installerSketches.forEach((sketch, index) => {
+    sketch.title = `Полотно ${index + 1}`;
+  });
+}
+
+function removeActiveInstallerSketch() {
+  ensureInstallerSketches();
+  if (state.installerSketches.length <= 1) {
+    toast("Должен остаться хотя бы один чертеж.");
+    return false;
+  }
+  const removed = state.installerSketches.splice(state.activeInstallerSketchIndex, 1)[0];
+  if (removed?.id) delete state.installerHistory[removed.id];
+  state.activeInstallerSketchIndex = Math.max(0, Math.min(state.activeInstallerSketchIndex, state.installerSketches.length - 1));
+  renumberInstallerSketchTitles();
+  state.installerSketch = state.installerSketches[state.activeInstallerSketchIndex];
+  toast("Чертеж удален.");
+  return true;
+}
+
+function resetInstallerSketches() {
+  const next = prepareInstallerSketch(createDefaultSketch(), 0);
+  state.installerSketches = [next];
+  state.activeInstallerSketchIndex = 0;
+  state.installerSketch = next;
+  state.installerHistory = {};
+}
+
+function installerSketchesMeasuredStats() {
+  ensureInstallerSketches();
+  return state.installerSketches.reduce((total, sketch) => {
+    const stats = sketchMeasuredStats(sketch.points || []);
+    total.area += Number(stats.area || 0);
+    total.perimeter += Number(stats.perimeter || 0);
+    return total;
+  }, { area: 0, perimeter: 0 });
+}
+
+function getInstallerSketchPayloads() {
+  ensureInstallerSketches();
+  return state.installerSketches.map((sketch, index) => {
+    const stats = sketchMeasuredStats(sketch.points || []);
+    return {
+      title: sketch.title || `Полотно ${index + 1}`,
+      order: index + 1,
+      points: sketch.points || [],
+      dimensions: sketch.dimensions || {},
+      diagonals: sketch.diagonals || {},
+      holes: sketch.holes || [],
+      area: stats.area,
+      perimeter: stats.perimeter,
+      aiConfidence: sketch.aiConfidence || 0,
+      warnings: sketch.warnings || [],
+      aiDraft: sketch.aiDraft,
+      note: sketch.note || ""
+    };
+  });
+}
+
+function getInstallerMissingDimensions() {
+  ensureInstallerSketches();
+  return state.installerSketches.flatMap((sketch, index) => sketchEdges(sketch.points || [])
+    .filter((edge) => !Number(sketch.dimensions?.[edge.key]))
+    .map((edge) => `${sketch.title || `Полотно ${index + 1}`}: ${edge.key}`));
+}
+
+function installerSketchTabsTemplate() {
+  ensureInstallerSketches();
+  return `
+    <div class="sketch-tab-list" role="tablist" aria-label="Чертежи объекта">
+      ${state.installerSketches.map((sketch, index) => {
+        const stats = sketchMeasuredStats(sketch.points || []);
+        const active = index === state.activeInstallerSketchIndex;
+        return `
+          <button class="sketch-tab${active ? " is-active" : ""}" type="button" role="tab" aria-selected="${active ? "true" : "false"}" data-installer-sketch-index="${index}">
+            <strong>${escapeHtml(sketch.title || `Полотно ${index + 1}`)}</strong>
+            <span>${formatQty(stats.area)} м² · ${formatQty(stats.perimeter)} м</span>
+          </button>
+        `;
+      }).join("")}
+      <button class="sketch-tab sketch-tab-add" type="button" data-installer-sketch-add>+ еще чертеж</button>
+    </div>
+    ${state.installerSketches.length > 1 ? `<button class="sketch-remove" type="button" data-installer-sketch-remove>Удалить текущий</button>` : ""}
+  `;
+}
+
+function bindInstallerSketchTabs(renderSketch) {
+  document.querySelectorAll("[data-installer-sketch-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.installerSketchIndex);
+      ensureInstallerSketches();
+      if (!Number.isInteger(index) || index === state.activeInstallerSketchIndex || !state.installerSketches[index]) return;
+      state.activeInstallerSketchIndex = index;
+      state.installerSketch = state.installerSketches[index];
+      renderSketch();
+    });
+  });
+  document.querySelector("[data-installer-sketch-add]")?.addEventListener("click", () => {
+    addInstallerSketch();
+    renderSketch();
+  });
+  document.querySelector("[data-installer-sketch-remove]")?.addEventListener("click", () => {
+    if (removeActiveInstallerSketch()) renderSketch();
+  });
+}
+
 function pushInstallerHistory(snapshot = state.installerSketch) {
-  state.installerHistory = [cloneInstallerSketch(snapshot), ...(state.installerHistory || [])].slice(0, 40);
+  ensureInstallerSketches();
+  const key = state.installerSketch.id || "active";
+  const stack = Array.isArray(state.installerHistory?.[key]) ? state.installerHistory[key] : [];
+  state.installerHistory = {
+    ...(state.installerHistory || {}),
+    [key]: [cloneInstallerSketch(snapshot), ...stack].slice(0, 40)
+  };
 }
 
 function restoreInstallerHistory() {
-  const previous = state.installerHistory?.shift();
+  ensureInstallerSketches();
+  const key = state.installerSketch.id || "active";
+  const stack = Array.isArray(state.installerHistory?.[key]) ? state.installerHistory[key] : [];
+  const previous = stack.shift();
   if (!previous) {
     toast("Нет предыдущего действия.");
     return false;
   }
-  state.installerSketch = cloneInstallerSketch(previous);
+  state.installerHistory[key] = stack;
+  replaceActiveInstallerSketch(previous);
   normalizeSketchDimensionState();
   return true;
 }
@@ -1648,7 +1818,7 @@ function getInstallerExtraLines() {
 function syncInstallerCalculatedFields() {
   const form = document.getElementById("installerForm");
   if (!form) return;
-  const stats = sketchMeasuredStats(state.installerSketch.points);
+  const stats = installerSketchesMeasuredStats();
   const areaInput = form.querySelector("[data-installer-area]");
   const perimeterInput = form.querySelector("[data-installer-perimeter]");
   if (areaInput) areaInput.value = inputQtyValue(stats.area);
@@ -1656,10 +1826,12 @@ function syncInstallerCalculatedFields() {
 }
 
 function bindInstallerSketch() {
+  ensureInstallerSketches();
   const board = document.getElementById("sketchBoard");
   const meta = document.getElementById("sketchMeta");
   const builder = document.getElementById("sketchBuilder");
   const dimensions = document.getElementById("sketchDimensions");
+  const tabs = document.getElementById("installerSketchTabs");
   if (!board) return;
   let dragIndex = null;
   let dragMoved = false;
@@ -1685,9 +1857,13 @@ function bindInstallerSketch() {
     if (meta) meta.innerHTML = sketchMetaTemplate();
     if (builder) builder.innerHTML = sketchBuilderTemplate();
     if (dimensions) dimensions.innerHTML = sketchDimensionsTemplate();
+    if (tabs) tabs.innerHTML = installerSketchTabsTemplate();
     syncInstallerCalculatedFields();
+    bindInstallerSketchTabs(renderSketch);
     bindSketchDimensionInputs();
   };
+
+  bindInstallerSketchTabs(renderSketch);
 
   board.addEventListener("click", (event) => {
     if (suppressNextClick) {
@@ -1765,7 +1941,7 @@ function bindInstallerSketch() {
   document.querySelector("[data-sketch-reset]")?.addEventListener("click", () => {
     setAddPointMode(false);
     pushInstallerHistory();
-    state.installerSketch = createDefaultSketch();
+    replaceActiveInstallerSketch(createDefaultSketch());
     renderSketch();
   });
 
@@ -1773,7 +1949,7 @@ function bindInstallerSketch() {
     button.addEventListener("click", () => {
       setAddPointMode(false);
       pushInstallerHistory();
-      state.installerSketch = button.dataset.sketchTemplate === "lshape" ? createLShapeSketch() : createDefaultSketch();
+      replaceActiveInstallerSketch(button.dataset.sketchTemplate === "lshape" ? createLShapeSketch() : createDefaultSketch());
       renderSketch();
     });
   });
@@ -1836,7 +2012,7 @@ function applyInstallerAiDraft(draft) {
       }))
     : createDefaultSketch().points;
 
-  state.installerSketch = {
+  replaceActiveInstallerSketch({
     points,
     dimensions: draft.dimensions && typeof draft.dimensions === "object" ? draft.dimensions : {},
     diagonals: draft.diagonals && typeof draft.diagonals === "object" ? draft.diagonals : {},
@@ -1853,7 +2029,7 @@ function applyInstallerAiDraft(draft) {
     activeEdgeKey: "A-B",
     shapeType: normalizeAiShapeType(draft.shapeType, points.length),
     aiDraft: true
-  };
+  });
 
   normalizeSketchDimensionState();
   if (state.installerSketch.shapeType !== "custom") {
@@ -2043,7 +2219,8 @@ async function submitInstallerRequest(event) {
   const readyTime = form.get("readyTime");
   const method = form.get("method");
   const materialId = form.get("materialId");
-  const measuredStats = sketchMeasuredStats(state.installerSketch.points);
+  const sketches = getInstallerSketchPayloads();
+  const measuredStats = installerSketchesMeasuredStats();
   const objectArea = measuredStats.area;
   const objectPerimeter = measuredStats.perimeter;
   const extraItems = getInstallerExtraLines().map(({ product, qty }) => ({ productId: product.id, qty }));
@@ -2051,9 +2228,7 @@ async function submitInstallerRequest(event) {
   if (!materialId) return setNote(note, "Выберите материал.", true);
   if (!readyDate || !readyTime) return setNote(note, "Выберите дату и время готовности.", true);
   if (isSundayDate(readyDate)) return setNote(note, "В воскресенье магазин не работает. Выберите другую дату.", true);
-  const missingDimensions = sketchEdges(state.installerSketch.points)
-    .filter((edge) => !Number(state.installerSketch.dimensions[edge.key]))
-    .map((edge) => edge.key);
+  const missingDimensions = getInstallerMissingDimensions();
   if (missingDimensions.length) {
     return setNote(note, `Введите точные размеры сторон: ${missingDimensions.join(", ")}.`, true);
   }
@@ -2079,18 +2254,8 @@ async function submitInstallerRequest(event) {
       timeZone: KYRGYZ_TIME_ZONE
     },
     extraItems,
-    sketch: {
-      points: state.installerSketch.points,
-      dimensions: state.installerSketch.dimensions,
-      diagonals: state.installerSketch.diagonals,
-      holes: state.installerSketch.holes || [],
-      area: objectArea,
-      perimeter: objectPerimeter,
-      aiConfidence: state.installerSketch.aiConfidence || 0,
-      warnings: state.installerSketch.warnings || [],
-      aiDraft: state.installerSketch.aiDraft,
-      note: state.installerSketch.note || (state.installerPhoto ? "К заявке прикреплено фото чертежа." : "")
-    },
+    sketch: sketches[0] || {},
+    sketches,
     sketchPhoto: state.installerPhoto
   };
 
@@ -2104,7 +2269,7 @@ async function submitInstallerRequest(event) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Не удалось отправить заявку");
     state.installerPhoto = null;
-    state.installerSketch = createDefaultSketch();
+    resetInstallerSketches();
     state.installerExtras = {};
     saveLastOrder({ id: data.request?.id });
     navigate(`/success?order=${encodeURIComponent(data.request?.id || "")}`);

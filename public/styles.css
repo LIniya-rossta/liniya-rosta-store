@@ -1620,6 +1620,82 @@ select {
   box-shadow: 0 14px 34px rgba(217, 173, 104, 0.22);
 }
 
+.sketch-tabs {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.sketch-tab-list {
+  display: flex;
+  flex: 1;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scroll-snap-type: x proximity;
+}
+
+.sketch-tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.sketch-tab {
+  min-width: 152px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 11px 14px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink);
+  text-align: left;
+  scroll-snap-align: start;
+  box-shadow: var(--inner-glass);
+}
+
+.sketch-tab strong,
+.sketch-tab span {
+  display: block;
+}
+
+.sketch-tab strong {
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.sketch-tab span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.sketch-tab.is-active {
+  border-color: rgba(243, 220, 168, 0.82);
+  background:
+    linear-gradient(135deg, rgba(243, 220, 168, 0.9), rgba(217, 173, 104, 0.84));
+  color: #07111a;
+}
+
+.sketch-tab.is-active span {
+  color: rgba(7, 17, 26, 0.68);
+}
+
+.sketch-tab-add {
+  min-width: 142px;
+  text-align: center;
+  font-weight: 950;
+}
+
+.sketch-remove {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  padding: 11px 14px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+  font-weight: 900;
+}
+
 .sketch-board {
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -3257,6 +3333,24 @@ body[data-theme="dark"] .summary-total {
 
   .sketch-actions button {
     flex: 1 1 auto;
+  }
+
+  .sketch-tabs {
+    display: grid;
+  }
+
+  .sketch-tab-list {
+    margin-inline: -2px;
+    padding-inline: 2px;
+  }
+
+  .sketch-tab {
+    min-width: 138px;
+  }
+
+  .sketch-remove {
+    width: 100%;
+    min-height: 46px;
   }
 
   .sketch-builder {
