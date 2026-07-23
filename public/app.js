@@ -679,8 +679,13 @@ function contactsSection() {
 }
 
 function installerMaterials() {
-  const products = getStoreProducts().filter((product) => product.active !== false);
+  const products = getStoreProducts().filter((product) => product.active !== false && isInstallerFilmMaterial(product));
   return products.sort((a, b) => installerMaterialScore(b) - installerMaterialScore(a));
+}
+
+function isInstallerFilmMaterial(product) {
+  const text = `${product.title || ""} ${product.category || ""}`.toLowerCase();
+  return text.includes("плен") || text.includes("полотн");
 }
 
 function installerMaterialScore(product) {
@@ -703,7 +708,7 @@ function materialPickerTemplate(materials) {
       </button>
       <div class="material-panel" data-material-panel hidden>
         <div class="material-panel-head">
-          <input type="search" inputmode="search" placeholder="Найти пленку, профиль, обои..." data-material-search>
+          <input type="search" inputmode="search" placeholder="Найти пленку или полотно..." data-material-search>
         </div>
         <div class="material-tabs" aria-label="Категории материалов">
           ${categories.map((category, index) => `<button type="button" data-material-category="${escapeHtml(category)}" class="${index === 0 ? "is-active" : ""}">${escapeHtml(category)}</button>`).join("")}

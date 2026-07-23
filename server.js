@@ -393,6 +393,9 @@ async function createInstallerRequest(payload) {
   const products = getCatalogProducts(await readJson(PRODUCTS_FILE, []));
   const product = products.find((item) => item.id === trimText(payload.materialId, 160) && item.active !== false);
   if (!product) throw publicError(400, "Выберите материал из каталога");
+  if (!isInstallerFilmMaterial(product)) {
+    throw publicError(400, "В пространстве монтажника можно выбрать только пленку или полотно");
+  }
 
   const installer = cleanCustomer(payload.installer || {});
   const object = {
@@ -992,6 +995,11 @@ function isSundayDateValue(dateValue) {
 
 function getCatalogProducts(products) {
   return products.length ? products : DEMO_PRODUCTS;
+}
+
+function isInstallerFilmMaterial(product) {
+  const text = `${product.title || ""} ${product.category || ""}`.toLowerCase();
+  return text.includes("плен") || text.includes("полотн");
 }
 
 function publicError(statusCode, publicMessage) {
