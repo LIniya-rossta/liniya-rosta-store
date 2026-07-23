@@ -1709,7 +1709,7 @@ select {
   background-size: 34px 34px;
   overflow: hidden;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  touch-action: none;
+  touch-action: pan-y;
 }
 
 .sketch-board.is-adding-point {
@@ -1720,16 +1720,25 @@ select {
     0 18px 46px rgba(217, 173, 104, 0.12);
 }
 
+.sketch-board.is-placing-hole {
+  border-color: rgba(99, 230, 255, 0.58);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 3px rgba(99, 230, 255, 0.12),
+    0 18px 46px rgba(99, 230, 255, 0.1);
+}
+
 .sketch-svg {
   width: 100%;
   height: 100%;
   min-height: 420px;
   display: block;
   cursor: crosshair;
-  touch-action: none;
+  touch-action: pan-y;
 }
 
-.sketch-board.is-adding-point .sketch-svg {
+.sketch-board.is-adding-point .sketch-svg,
+.sketch-board.is-placing-hole .sketch-svg {
   cursor: copy;
 }
 
@@ -1841,6 +1850,10 @@ select {
   stroke-width: 4;
 }
 
+.sketch-point {
+  touch-action: none;
+}
+
 .sketch-point text {
   fill: #ffffff;
   font-size: 13px;
@@ -1949,6 +1962,15 @@ select {
   color: var(--ink);
   font-size: 12px;
   font-weight: 950;
+}
+
+.builder-action-row button.is-active {
+  border-color: rgba(99, 230, 255, 0.68);
+  background:
+    linear-gradient(135deg, rgba(99, 230, 255, 0.2), rgba(243, 220, 168, 0.12)),
+    rgba(255, 255, 255, 0.09);
+  color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(99, 230, 255, 0.1);
 }
 
 .builder-action-row button:nth-child(-n + 2) {
@@ -3494,13 +3516,21 @@ body[data-theme="dark"] .summary-total {
     padding: 18px;
   }
 
+  .sketch-card {
+    padding-inline: 12px;
+  }
+
   .sketch-board {
-    min-height: 360px;
-    padding: 10px;
+    height: clamp(510px, 68vh, 610px);
+    min-height: 510px;
+    margin-inline: -8px;
+    padding: 8px;
+    border-radius: 32px;
   }
 
   .sketch-svg {
-    min-height: 330px;
+    height: 100%;
+    min-height: 100%;
   }
 
   .dimension-grid {

@@ -90,7 +90,9 @@ const state = {
   installerSketch: initialInstallerSketch,
   installerHistory: {},
   installerExtras: {},
-  installerPhoto: null
+  installerPhoto: null,
+  installerHoleMode: null,
+  installerDimensionDrafts: {}
 };
 
 const elements = {
@@ -968,6 +970,7 @@ function sketchTemplate() {
   const holes = state.installerSketch.holes || [];
   const activeEdge = resolveSketchEdge();
   const edges = sketchEdges(points);
+  const viewport = sketchViewport(points, holes);
   const pointString = points.map((point) => `${point.x},${point.y}`).join(" ");
   const edgeLabels = sketchEdgeLabels(edges);
   const diagonals = sketchDiagonals(points);
@@ -981,20 +984,20 @@ function sketchTemplate() {
   }).join("");
   const circles = points.map((point, index) => `
     <g class="sketch-point" data-sketch-point="${index}">
-      <circle cx="${point.x}" cy="${point.y}" r="13"></circle>
+      <circle cx="${point.x}" cy="${point.y}" r="16"></circle>
       <text x="${point.x}" y="${point.y + 5}">${escapeHtml(point.label)}</text>
     </g>
   `).join("");
 
   return `
-    <svg class="sketch-svg" viewBox="0 0 640 420" role="img" aria-label="Чертеж потолка">
+    <svg class="sketch-svg" viewBox="${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}" role="img" aria-label="Чертеж потолка">
       <defs>
         <linearGradient id="sketchLine" x1="0" x2="1">
           <stop offset="0" stop-color="#63e6ff"></stop>
           <stop offset="1" stop-color="#f3dca8"></stop>
         </linearGradient>
       </defs>
-      <rect x="1" y="1" width="638" height="418" rx="30"></rect>
+      <rect x="${viewport.x + 1}" y="${viewport.y + 1}" width="${Math.max(1, viewport.width - 2)}" height="${Math.max(1, viewport.height - 2)}" rx="30"></rect>
       ${points.length >= 3 ? `<polygon points="${pointString}"></polygon>` : ""}
       ${points.length >= 2 ? `<polyline points="${pointString}${points.length >= 3 ? ` ${points[0].x},${points[0].y}` : ""}"></polyline>` : ""}
       ${activeEdge ? `<line class="sketch-active-edge" x1="${activeEdge.from.x}" y1="${activeEdge.from.y}" x2="${activeEdge.to.x}" y2="${activeEdge.to.y}"></line>` : ""}
@@ -1025,6 +1028,14 @@ function holeTypeLabel(type) {
   }[type] || "Отверстие";
 }
 
+function holeButtonLabel(type) {
+  return {
+    pipe: "труба",
+    lamp: "люстра",
+    spot: "точка"
+  }[type] || "отверстие";
+}
+
 function normalizeAiShapeType(shapeType, pointsCount) {
   const value = String(shapeType || "").toLowerCase();
   if (value.includes("г") || value.includes("l") || value.includes("l-shape") || (pointsCount >= 6 && pointsCount <= 10)) return "lshape";
@@ -1033,7 +1044,7 @@ function normalizeAiShapeType(shapeType, pointsCount) {
 }
 
 function sketchTextLabel(point, key, value, className) {
-  const label = value ? `${key}: ${formatQty(value)} м` : key;
+  const label = value ? `${key}: ${formatDimension(value)} м` : key;
   const width = Math.max(76, label.length * 8 + 20);
   return `
     <g class="${className}">
@@ -1102,7 +1113,7 @@ function createSketchEdgeLabel(edge, value, index) {
   const isCompact = edge.length < 115;
   const offset = isCompact ? 54 : 30;
   const stagger = isCompact ? ((index % 2 === 0 ? -1 : 1) * Math.min(22, Math.max(8, edge.length * 0.18))) : 0;
-  const label = value ? `${edge.key}: ${formatQty(value)} м` : edge.key;
+  const label = value ? `${edge.key}: ${formatDimension(value)} м` : edge.key;
   const width = Math.max(isCompact ? 72 : 80, label.length * (isCompact ? 7.4 : 8) + 20);
   const height = isCompact ? 28 : 30;
   const preferred = clampLabelPoint({
@@ -1214,7 +1225,7 @@ function sketchBuilderTemplate() {
         return `
           <button class="builder-side${active ? " is-active" : ""}" type="button" data-select-edge="${escapeHtml(edge.key)}">
             <strong>${escapeHtml(edge.key)}</strong>
-            <span>${value ? `${formatQty(value)} м` : "размер"}</span>
+            <span>${value ? `${formatDimension(value)} м` : "размер"}</span>
           </button>
         `;
       }).join("")}
@@ -1227,9 +1238,9 @@ function sketchBuilderTemplate() {
       <div class="builder-action-row">
         <button type="button" data-add-notch="in">+ уступ внутрь</button>
         <button type="button" data-add-notch="out">+ выступ наружу</button>
-        <button type="button" data-add-hole="pipe">+ труба</button>
-        <button type="button" data-add-hole="lamp">+ люстра</button>
-        <button type="button" data-add-hole="spot">+ точка</button>
+        <button type="button" data-add-hole="pipe" class="${state.installerHoleMode === "pipe" ? "is-active" : ""}">${state.installerHoleMode === "pipe" ? "Тапните: труба" : "+ труба"}</button>
+        <button type="button" data-add-hole="lamp" class="${state.installerHoleMode === "lamp" ? "is-active" : ""}">${state.installerHoleMode === "lamp" ? "Тапните: люстра" : "+ люстра"}</button>
+        <button type="button" data-add-hole="spot" class="${state.installerHoleMode === "spot" ? "is-active" : ""}">${state.installerHoleMode === "spot" ? "Тапните: точка" : "+ точка"}</button>
       </div>
     </div>
   `;
@@ -1264,18 +1275,16 @@ function dimensionInput(item, type) {
       <label>
         <span>${escapeHtml(item.key)}</span>
         <input
-          type="number"
-          min="0.01"
-          step="0.01"
+          type="text"
           inputmode="decimal"
           enterkeyhint="next"
-          value="${escapeHtml(inputQtyValue(value))}"
+          value="${escapeHtml(inputDimensionValue(value))}"
           placeholder="${escapeHtml(dimensionPlaceholder(item.estimated))}"
           data-sketch-${type}="${escapeHtml(item.key)}"
         >
         <small>м</small>
       </label>
-      ${type === "dimension" ? `<button type="button" data-select-edge="${escapeHtml(item.key)}">сторона</button>` : ""}
+      ${type === "dimension" ? `<button type="button" data-commit-dimension="${escapeHtml(item.key)}">OK</button>` : ""}
     </div>
   `;
 }
@@ -1283,7 +1292,7 @@ function dimensionInput(item, type) {
 function dimensionPlaceholder(value) {
   const number = Number(value || 0);
   if (!Number.isFinite(number) || number < 0.1) return "размер";
-  return formatQty(number);
+  return formatDimension(number);
 }
 
 function createInstallerSketchId() {
@@ -1836,18 +1845,39 @@ function bindInstallerSketch() {
   let dragIndex = null;
   let dragMoved = false;
   let dragStartSketch = null;
+  let dragStartScale = null;
   let suppressNextClick = false;
   let addPointMode = false;
 
+  const syncSketchModeButtons = () => {
+    board.classList.toggle("is-adding-point", addPointMode);
+    board.classList.toggle("is-placing-hole", Boolean(state.installerHoleMode));
+    const pointButton = document.querySelector("[data-sketch-add-point]");
+    if (pointButton) {
+      pointButton.classList.toggle("is-active", addPointMode);
+      pointButton.textContent = addPointMode ? "Тапните по стороне" : "Добавить точку";
+    }
+    document.querySelectorAll("[data-add-hole]").forEach((button) => {
+      const type = button.dataset.addHole;
+      const active = state.installerHoleMode === type;
+      button.classList.toggle("is-active", active);
+      button.textContent = active ? `Тапните: ${holeTypeLabel(type).toLowerCase()}` : `+ ${holeButtonLabel(type)}`;
+    });
+  };
+
   const setAddPointMode = (enabled) => {
     addPointMode = enabled;
-    board.classList.toggle("is-adding-point", addPointMode);
-    const button = document.querySelector("[data-sketch-add-point]");
-    if (button) {
-      button.classList.toggle("is-active", addPointMode);
-      button.textContent = addPointMode ? "Тапните по стороне" : "Добавить точку";
-    }
+    if (addPointMode) state.installerHoleMode = null;
+    syncSketchModeButtons();
     if (addPointMode) toast("Тапните по линии контура, где нужна новая точка.");
+  };
+
+  const setHolePlacementMode = (type) => {
+    const nextType = ["pipe", "lamp", "spot"].includes(type) ? type : null;
+    state.installerHoleMode = state.installerHoleMode === nextType ? null : nextType;
+    if (state.installerHoleMode) addPointMode = false;
+    syncSketchModeButtons();
+    if (state.installerHoleMode) toast(`Выберите место на полотне: ${holeTypeLabel(state.installerHoleMode).toLowerCase()}.`);
   };
 
   const renderSketch = () => {
@@ -1860,7 +1890,8 @@ function bindInstallerSketch() {
     if (tabs) tabs.innerHTML = installerSketchTabsTemplate();
     syncInstallerCalculatedFields();
     bindInstallerSketchTabs(renderSketch);
-    bindSketchDimensionInputs();
+    bindSketchDimensionInputs({ onHoleRequest: setHolePlacementMode });
+    syncSketchModeButtons();
   };
 
   bindInstallerSketchTabs(renderSketch);
@@ -1870,9 +1901,16 @@ function bindInstallerSketch() {
       suppressNextClick = false;
       return;
     }
+    const svg = event.target.closest(".sketch-svg");
+    if (state.installerHoleMode) {
+      if (!svg) return;
+      addSketchHole(state.installerHoleMode, pointerToSketchPoint(svg, event));
+      state.installerHoleMode = null;
+      renderSketch();
+      return;
+    }
     const pointNode = event.target.closest("[data-sketch-point]");
     if (pointNode) return;
-    const svg = event.target.closest(".sketch-svg");
     if (addPointMode) {
       if (!svg) return;
       const point = pointerToSketchPoint(svg, event);
@@ -1902,13 +1940,17 @@ function bindInstallerSketch() {
   });
 
   board.addEventListener("pointerdown", (event) => {
-    if (addPointMode) return;
+    if (addPointMode || state.installerHoleMode) return;
     const pointNode = event.target.closest("[data-sketch-point]");
     const svg = event.target.closest(".sketch-svg");
     if (!pointNode || !svg) return;
+    event.preventDefault();
     dragIndex = Number(pointNode.dataset.sketchPoint);
     dragMoved = false;
     dragStartSketch = cloneInstallerSketch();
+    dragStartScale = sketchScaleFromDimensions(dragStartSketch);
+    state.installerSketch.shapeType = "custom";
+    state.installerSketch.aiDraft = false;
     board.setPointerCapture?.(event.pointerId);
   });
 
@@ -1916,10 +1958,12 @@ function bindInstallerSketch() {
     if (dragIndex === null) return;
     const svg = board.querySelector(".sketch-svg");
     if (!svg) return;
+    event.preventDefault();
     state.installerSketch.points[dragIndex] = {
       ...state.installerSketch.points[dragIndex],
       ...pointerToSketchPoint(svg, event)
     };
+    syncDimensionsFromGeometry(dragStartScale);
     dragMoved = true;
     board.innerHTML = sketchTemplate();
     if (meta) meta.innerHTML = sketchMetaTemplate();
@@ -1931,10 +1975,12 @@ function bindInstallerSketch() {
       pushInstallerHistory(dragStartSketch);
       state.installerSketch.shapeType = "custom";
       state.installerSketch.aiDraft = false;
+      syncDimensionsFromGeometry(dragStartScale);
       renderSketch();
     }
     dragIndex = null;
     dragStartSketch = null;
+    dragStartScale = null;
     board.releasePointerCapture?.(event.pointerId);
   });
 
@@ -2000,7 +2046,8 @@ function bindInstallerSketch() {
   });
 
   normalizeSketchDimensionState();
-  bindSketchDimensionInputs();
+  bindSketchDimensionInputs({ onHoleRequest: setHolePlacementMode });
+  syncSketchModeButtons();
 }
 
 function applyInstallerAiDraft(draft) {
@@ -2040,7 +2087,7 @@ function applyInstallerAiDraft(draft) {
   applySketchDimensionsToGeometry();
 }
 
-function bindSketchDimensionInputs() {
+function bindSketchDimensionInputs(options = {}) {
   const rerenderSketchSurface = () => {
     const board = document.getElementById("sketchBoard");
     const meta = document.getElementById("sketchMeta");
@@ -2051,43 +2098,82 @@ function bindSketchDimensionInputs() {
     if (builder) builder.innerHTML = sketchBuilderTemplate();
     if (dimensions) dimensions.innerHTML = sketchDimensionsTemplate();
     syncInstallerCalculatedFields();
-    bindSketchDimensionInputs();
+    bindSketchDimensionInputs(options);
+  };
+
+  const draftKeyForInput = (input, type) => {
+    const key = type === "diagonal" ? input.dataset.sketchDiagonal : input.dataset.sketchDimension;
+    return key ? `${type}:${key}` : "";
+  };
+
+  const rememberDimensionDraft = (input, type) => {
+    const draftKey = draftKeyForInput(input, type);
+    if (!draftKey) return;
+    state.installerDimensionDrafts[draftKey] = input.value;
   };
 
   const commitDimensionInput = (input, type) => {
     const store = type === "diagonal" ? state.installerSketch.diagonals : state.installerSketch.dimensions;
-    const value = parseDimension(input.value);
     const key = type === "diagonal" ? input.dataset.sketchDiagonal : input.dataset.sketchDimension;
+    const draftKey = draftKeyForInput(input, type);
+    const rawValue = draftKey && state.installerDimensionDrafts[draftKey] !== undefined
+      ? state.installerDimensionDrafts[draftKey]
+      : input.value;
+    const value = parseDimension(rawValue);
     const current = Number(store[key] || 0);
+    if (type === "dimension") selectSketchEdge(key);
+    if (draftKey) delete state.installerDimensionDrafts[draftKey];
     if (value === current) return;
     pushInstallerHistory();
-    if (value) store[key] = value;
-    else delete store[key];
+    if (value) {
+      store[key] = value;
+      if (type === "dimension") syncRectangleDimensionPair(key, value);
+    } else {
+      delete store[key];
+      if (type === "dimension") syncRectangleDimensionPair(key, 0);
+    }
     applySketchDimensionsToGeometry();
     rerenderSketchSurface();
-  };
-  const inputTimers = new WeakMap();
-  const scheduleDimensionCommit = (input, type) => {
-    clearTimeout(inputTimers.get(input));
-    inputTimers.set(input, setTimeout(() => commitDimensionInput(input, type), 520));
   };
   const commitDimensionNow = (input, type) => {
     clearTimeout(inputTimers.get(input));
     commitDimensionInput(input, type);
   };
+  const inputTimers = new WeakMap();
 
   document.querySelectorAll("[data-sketch-dimension]").forEach((input) => {
     const commit = () => commitDimensionNow(input, "dimension");
-    input.addEventListener("input", () => scheduleDimensionCommit(input, "dimension"));
+    input.addEventListener("focus", () => selectSketchEdge(input.dataset.sketchDimension));
+    input.addEventListener("input", () => {
+      clearTimeout(inputTimers.get(input));
+      rememberDimensionDraft(input, "dimension");
+    });
     input.addEventListener("change", commit);
     input.addEventListener("blur", commit);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commit();
+        input.blur();
+      }
+    });
   });
 
   document.querySelectorAll("[data-sketch-diagonal]").forEach((input) => {
     const commit = () => commitDimensionNow(input, "diagonal");
-    input.addEventListener("input", () => scheduleDimensionCommit(input, "diagonal"));
+    input.addEventListener("input", () => {
+      clearTimeout(inputTimers.get(input));
+      rememberDimensionDraft(input, "diagonal");
+    });
     input.addEventListener("change", commit);
     input.addEventListener("blur", commit);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commit();
+        input.blur();
+      }
+    });
   });
 
   document.querySelectorAll("[data-select-edge]").forEach((button) => {
@@ -2095,6 +2181,20 @@ function bindSketchDimensionInputs() {
       selectSketchEdge(button.dataset.selectEdge);
       rerenderSketchSurface();
     });
+  });
+
+  document.querySelectorAll("[data-commit-dimension]").forEach((button) => {
+    const commitButtonDimension = (event) => {
+      event?.preventDefault();
+      const input = [...document.querySelectorAll("[data-sketch-dimension]")]
+        .find((item) => item.dataset.sketchDimension === button.dataset.commitDimension);
+      if (!input) return;
+      commitDimensionNow(input, "dimension");
+    };
+    button.addEventListener("pointerdown", commitButtonDimension);
+    button.addEventListener("mousedown", commitButtonDimension);
+    button.addEventListener("touchstart", commitButtonDimension, { passive: false });
+    button.addEventListener("click", commitButtonDimension);
   });
 
   document.querySelectorAll("[data-add-notch]").forEach((button) => {
@@ -2106,8 +2206,12 @@ function bindSketchDimensionInputs() {
 
   document.querySelectorAll("[data-add-hole]").forEach((button) => {
     button.addEventListener("click", () => {
-      addSketchHole(button.dataset.addHole);
-      rerenderSketchSurface();
+      if (typeof options.onHoleRequest === "function") {
+        options.onHoleRequest(button.dataset.addHole);
+      } else {
+        addSketchHole(button.dataset.addHole);
+        rerenderSketchSurface();
+      }
     });
   });
 }
@@ -2660,10 +2764,10 @@ function remapDimensionsAfterNotch(oldEdges, insertIndex, oldDimensions, split) 
   return nextDimensions;
 }
 
-function addSketchHole(type) {
+function addSketchHole(type, explicitPoint) {
   const holes = state.installerSketch.holes || [];
   const edge = resolveSketchEdge();
-  const point = defaultHolePoint(type, edge, holes.length);
+  const point = explicitPoint ? clampSketchPoint(explicitPoint) : defaultHolePoint(type, edge, holes.length);
   pushInstallerHistory();
   holes.push({
     type: ["pipe", "lamp", "spot"].includes(type) ? type : "other",
@@ -2770,8 +2874,14 @@ function repairSketchLayout() {
 function repairRectangleLayout() {
   const oldDimensions = { ...(state.installerSketch.dimensions || {}) };
   const edgeValues = sketchEdges(state.installerSketch.points).map((edge) => oldDimensions[edge.key] || edge.estimated || 0);
-  const widthMeters = edgeValues[0] || edgeValues[2] || 4;
-  const heightMeters = edgeValues[1] || edgeValues[3] || 2.6;
+  const activeKey = state.installerSketch.activeEdgeKey;
+  const dimensionValue = (key) => Number(oldDimensions[key] || 0);
+  const widthMeters = ["A-B", "C-D"].includes(activeKey) && dimensionValue(activeKey)
+    ? dimensionValue(activeKey)
+    : dimensionValue("A-B") || dimensionValue("C-D") || edgeValues[0] || edgeValues[2] || 4;
+  const heightMeters = ["B-C", "D-A"].includes(activeKey) && dimensionValue(activeKey)
+    ? dimensionValue(activeKey)
+    : dimensionValue("B-C") || dimensionValue("D-A") || edgeValues[1] || edgeValues[3] || 2.6;
   const safeWidthMeters = Math.max(0.1, Number(widthMeters));
   const safeHeightMeters = Math.max(0.1, Number(heightMeters));
   const scale = Math.min(520 / safeWidthMeters, 320 / safeHeightMeters, 130);
@@ -2788,8 +2898,8 @@ function repairRectangleLayout() {
   state.installerSketch.dimensions = {
     "A-B": roundDimension(widthMeters),
     "B-C": roundDimension(heightMeters),
-    "C-D": roundDimension(edgeValues[2] || widthMeters),
-    "D-A": roundDimension(edgeValues[3] || heightMeters)
+    "C-D": roundDimension(widthMeters),
+    "D-A": roundDimension(heightMeters)
   };
   state.installerSketch.diagonals = {};
   state.installerSketch.shapeType = "rectangle";
@@ -2872,11 +2982,23 @@ function roundDimension(value) {
   return Math.round(number * 100) / 100;
 }
 
+function syncRectangleDimensionPair(key, value) {
+  if (state.installerSketch.shapeType !== "rectangle") return;
+  const pairs = {
+    "A-B": "C-D",
+    "C-D": "A-B",
+    "B-C": "D-A",
+    "D-A": "B-C"
+  };
+  const pairKey = pairs[key];
+  if (!pairKey) return;
+  if (value) state.installerSketch.dimensions[pairKey] = roundDimension(value);
+  else delete state.installerSketch.dimensions[pairKey];
+}
+
 function useStructuredLayoutForDimensions() {
-  const count = state.installerSketch.points.length;
   return state.installerSketch.shapeType === "rectangle"
-    || state.installerSketch.shapeType === "lshape"
-    || count === 4;
+    || state.installerSketch.shapeType === "lshape";
 }
 
 function applySketchDimensionsToGeometry() {
@@ -2942,6 +3064,84 @@ function sketchPixelsPerMeter(points, constraints) {
     .sort((a, b) => a - b);
   const median = ratios.length ? ratios[Math.floor(ratios.length / 2)] : 58;
   return Math.max(18, Math.min(110, median));
+}
+
+function sketchViewport(points = state.installerSketch.points, holes = state.installerSketch.holes || []) {
+  const items = [
+    ...(Array.isArray(points) ? points : []),
+    ...(Array.isArray(holes) ? holes : [])
+  ].filter((point) => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
+  if (!items.length) return { x: 0, y: 0, width: 640, height: 420 };
+
+  const bounds = sketchBounds(items);
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  const narrow = typeof window !== "undefined" && window.matchMedia?.("(max-width: 560px)")?.matches;
+  const aspect = narrow ? 1.1 : 640 / 420;
+  const padding = narrow ? 72 : 84;
+  let width = Math.max(narrow ? 300 : 440, bounds.maxX - bounds.minX + padding * 2);
+  let height = Math.max(narrow ? 300 : 290, bounds.maxY - bounds.minY + padding * 2);
+
+  if (width / height > aspect) {
+    height = width / aspect;
+  } else {
+    width = height * aspect;
+  }
+
+  const maxWidth = narrow ? 462 : 640;
+  const maxHeight = 420;
+  if (width > maxWidth) {
+    width = maxWidth;
+    height = width / aspect;
+  }
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = height * aspect;
+  }
+  width = Math.max(narrow ? 300 : 440, width);
+  height = Math.max(narrow ? 300 : 290, height);
+
+  let x = centerX - width / 2;
+  let y = centerY - height / 2;
+  x = Math.max(0, Math.min(640 - width, x));
+  y = Math.max(0, Math.min(420 - height, y));
+
+  return {
+    x: Math.round(x * 10) / 10,
+    y: Math.round(y * 10) / 10,
+    width: Math.round(width * 10) / 10,
+    height: Math.round(height * 10) / 10
+  };
+}
+
+function sketchScaleFromDimensions(sketch = state.installerSketch) {
+  const points = sketch?.points || [];
+  const dimensions = sketch?.dimensions || {};
+  const ratios = sketchEdges(points)
+    .map((edge) => {
+      const value = Number(dimensions[edge.key] || 0);
+      return value > 0 ? edge.length / value : 0;
+    })
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+  if (!ratios.length) return 80;
+  return Math.max(18, Math.min(140, ratios[Math.floor(ratios.length / 2)]));
+}
+
+function syncDimensionsFromGeometry(scale = sketchScaleFromDimensions()) {
+  const safeScale = Number.isFinite(scale) && scale > 0 ? scale : sketchScaleFromDimensions();
+  const dimensions = {};
+  sketchEdges(state.installerSketch.points).forEach((edge) => {
+    dimensions[edge.key] = roundDimension(edge.length / safeScale);
+  });
+  state.installerSketch.dimensions = dimensions;
+
+  const previousDiagonals = state.installerSketch.diagonals || {};
+  const diagonals = {};
+  sketchDiagonals(state.installerSketch.points).forEach((diagonal) => {
+    if (previousDiagonals[diagonal.key]) diagonals[diagonal.key] = roundDimension(diagonal.length / safeScale);
+  });
+  state.installerSketch.diagonals = diagonals;
 }
 
 function fitSketchPoints(points) {
@@ -3035,16 +3235,23 @@ function normalizeSketchDimensionState() {
 }
 
 function parseDimension(value) {
-  const number = Number(String(value || "").replace(",", "."));
+  const normalized = String(value || "").replace(/\s+/g, "").replace(",", ".");
+  const match = normalized.match(/\d+(?:\.\d+)?/);
+  const number = match ? Number(match[0]) : 0;
   if (!Number.isFinite(number) || number <= 0) return 0;
   return Math.round(number * 100) / 100;
 }
 
 function pointerToSketchPoint(svg, event) {
   const rect = svg.getBoundingClientRect();
+  const viewBox = svg.viewBox?.baseVal;
+  const originX = Number.isFinite(viewBox?.x) ? viewBox.x : 0;
+  const originY = Number.isFinite(viewBox?.y) ? viewBox.y : 0;
+  const width = Number.isFinite(viewBox?.width) && viewBox.width > 0 ? viewBox.width : 640;
+  const height = Number.isFinite(viewBox?.height) && viewBox.height > 0 ? viewBox.height : 420;
   return clampSketchPoint({
-    x: Math.max(24, Math.min(616, Math.round(((event.clientX - rect.left) / rect.width) * 640))),
-    y: Math.max(24, Math.min(396, Math.round(((event.clientY - rect.top) / rect.height) * 420)))
+    x: originX + Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * width,
+    y: originY + Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)) * height
   });
 }
 
@@ -3129,6 +3336,20 @@ function inputQtyValue(value) {
   if (value === "" || value === null || value === undefined) return "";
   const number = Number(value || 0);
   return Number.isInteger(number) ? String(number) : String(Math.round(number * 10) / 10);
+}
+
+function inputDimensionValue(value) {
+  if (value === "" || value === null || value === undefined) return "";
+  const number = Number(value || 0);
+  if (!Number.isFinite(number) || number <= 0) return "";
+  return Number.isInteger(number) ? String(number) : String(Math.round(number * 100) / 100).replace(".", ",");
+}
+
+function formatDimension(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return "0";
+  if (Number.isInteger(number)) return String(number);
+  return String(Math.round(number * 100) / 100).replace(".", ",");
 }
 
 function filterProducts(products) {
