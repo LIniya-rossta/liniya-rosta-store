@@ -1628,7 +1628,7 @@ function addToCart(productId, qtyValue) {
   state.cart[productId] = normalizeQty(product, (state.cart[productId] || 0) + qty);
   saveCart();
   updateCartCount();
-  toast(`${product.title} добавлен: ${formatQty(qty)} ${product.unit || "шт"}`);
+  toast(`Добавлено в корзину: ${product.title} · ${formatQty(qty)} ${product.unit || "шт"}`);
 }
 
 function setQty(productId, qty, shouldRenderCart = true) {
@@ -2425,7 +2425,13 @@ function initials(value) {
 }
 
 function toast(message) {
-  elements.toast.textContent = message;
+  if (!elements.toast) return;
+  elements.toast.classList.remove("is-visible");
+  elements.toast.innerHTML = `
+    <span class="toast-icon" aria-hidden="true">✓</span>
+    <span class="toast-text">${escapeHtml(message)}</span>
+  `;
+  void elements.toast.offsetWidth;
   elements.toast.classList.add("is-visible");
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => elements.toast.classList.remove("is-visible"), 3000);
