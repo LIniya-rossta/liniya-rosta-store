@@ -987,7 +987,7 @@ function sketchTemplate() {
   }).join("");
   const circles = points.map((point, index) => {
     const isSnapped = state.installerSnapGuide?.pointIndex === index
-      && (state.installerSnapGuide.x || state.installerSnapGuide.y);
+      && (state.installerSnapGuide.x || state.installerSnapGuide.y || state.installerSnapGuide.diagonal);
     return `
     <g class="sketch-point${isSnapped ? " is-snapped" : ""}" data-sketch-point="${index}">
       <circle cx="${point.x}" cy="${point.y}" r="16"></circle>
@@ -1018,7 +1018,7 @@ function sketchTemplate() {
 }
 
 function sketchSnapGuideTemplate(guide, viewport) {
-  if (!guide || (!guide.x && !guide.y)) return "";
+  if (!guide || (!guide.x && !guide.y && !guide.diagonal)) return "";
   const lines = [];
   const labelX = viewport.x + 24;
   const labelY = viewport.y + 28;
@@ -1046,7 +1046,98 @@ function sketchSnapGuideTemplate(guide, viewport) {
       </g>
     `);
   }
+  if (guide.diagonal) {
+    const line = diagonalSnapLine(guide.diagonal, viewport);
+    if (line) {
+      const labelPoint = clampLabelPoint({
+        x: (line.x1 + line.x2) / 2,
+        y: (line.y1 + line.y2) / 2
+      });
+      lines.push(`
+        <line class="sketch-snap-guide is-diagonal" x1="${line.x1}" y1="${line.y1}" x2="${line.x2}" y2="${line.y2}"></line>
+        <g class="sketch-snap-label is-diagonal" transform="translate(${labelPoint.x - 57} ${labelPoint.y - 18})">
+          <rect x="0" y="-18" width="114" height="28" rx="12"></rect>
+          <text x="57" y="1">диагональ ${escapeHtml(guide.diagonal.label || "")}</text>
+        </g>
+      `);
+    }
+  }
   return `<g class="sketch-snap-layer">${lines.join("")}</g>`;
+}
+
+function diagonalSnapLine(diagonal, viewport) {
+  if (diagonal.line) {
+    return snapLineThroughViewport(diagonal.line, viewport);
+  }
+  const xMin = viewport.x + 12;
+  const xMax = viewport.x + viewport.width - 12;
+  const yMin = viewport.y + 12;
+  const yMax = viewport.y + viewport.height - 12;
+  const value = Number(diagonal.value);
+  if (!Number.isFinite(value)) return null;
+  const points = [];
+  const addPoint = (x, y) => {
+    if (x < xMin - 0.1 || x > xMax + 0.1 || y < yMin - 0.1 || y > yMax + 0.1) return;
+    const rounded = { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+    if (!points.some((point) => Math.abs(point.x - rounded.x) < 0.2 && Math.abs(point.y - rounded.y) < 0.2)) {
+      points.push(rounded);
+    }
+  };
+
+  if (diagonal.type === "down") {
+    addPoint(xMin, xMin - value);
+    addPoint(xMax, xMax - value);
+    addPoint(yMin + value, yMin);
+    addPoint(yMax + value, yMax);
+  } else {
+    addPoint(xMin, value - xMin);
+    addPoint(xMax, value - xMax);
+    addPoint(value - yMin, yMin);
+    addPoint(value - yMax, yMax);
+  }
+
+  if (points.length < 2) return null;
+  points.sort((a, b) => a.x - b.x || a.y - b.y);
+  const first = points[0];
+  const second = points[points.length - 1];
+  return { x1: first.x, y1: first.y, x2: second.x, y2: second.y };
+}
+
+function snapLineThroughViewport(line, viewport) {
+  const xMin = viewport.x + 12;
+  const xMax = viewport.x + viewport.width - 12;
+  const yMin = viewport.y + 12;
+  const yMax = viewport.y + viewport.height - 12;
+  const dx = line.x2 - line.x1;
+  const dy = line.y2 - line.y1;
+  if (!dx && !dy) return null;
+  const points = [];
+  const addPoint = (x, y) => {
+    if (x < xMin - 0.1 || x > xMax + 0.1 || y < yMin - 0.1 || y > yMax + 0.1) return;
+    const rounded = { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
+    if (!points.some((point) => Math.abs(point.x - rounded.x) < 0.2 && Math.abs(point.y - rounded.y) < 0.2)) {
+      points.push(rounded);
+    }
+  };
+
+  if (Math.abs(dx) > 0.001) {
+    const leftT = (xMin - line.x1) / dx;
+    const rightT = (xMax - line.x1) / dx;
+    addPoint(xMin, line.y1 + dy * leftT);
+    addPoint(xMax, line.y1 + dy * rightT);
+  }
+  if (Math.abs(dy) > 0.001) {
+    const topT = (yMin - line.y1) / dy;
+    const bottomT = (yMax - line.y1) / dy;
+    addPoint(line.x1 + dx * topT, yMin);
+    addPoint(line.x1 + dx * bottomT, yMax);
+  }
+
+  if (points.length < 2) return null;
+  points.sort((a, b) => a.x - b.x || a.y - b.y);
+  const first = points[0];
+  const second = points[points.length - 1];
+  return { x1: first.x, y1: first.y, x2: second.x, y2: second.y };
 }
 
 function sketchHoleTemplate(hole) {
@@ -3380,6 +3471,7 @@ function snapSketchDragPoint(point, movingIndex, basePoints = state.installerSke
 
   const closestX = closestSnapCandidate(point.x, candidates, "x", threshold);
   const closestY = closestSnapCandidate(point.y, candidates, "y", threshold);
+  const closestDiagonal = closestDiagonalSnapCandidate(point, candidates, threshold);
   const guide = { pointIndex: movingIndex };
   const next = { ...point };
 
@@ -3406,7 +3498,13 @@ function snapSketchDragPoint(point, movingIndex, basePoints = state.installerSke
     }
   }
 
-  const snapped = Boolean(guide.x || guide.y);
+  if (!guide.x && !guide.y && closestDiagonal) {
+    next.x = closestDiagonal.projected.x;
+    next.y = closestDiagonal.projected.y;
+    guide.diagonal = closestDiagonal;
+  }
+
+  const snapped = Boolean(guide.x || guide.y || guide.diagonal);
   return {
     point: clampSketchPoint(next),
     guide: snapped ? guide : null
@@ -3423,6 +3521,85 @@ function closestSnapCandidate(value, points, axis, threshold) {
     }))
     .filter((candidate) => Number.isFinite(candidate.value) && candidate.distance <= threshold)
     .sort((a, b) => a.distance - b.distance)[0] || null;
+}
+
+function closestDiagonalSnapCandidate(point, points, threshold) {
+  const candidates = [];
+  for (let firstIndex = 0; firstIndex < points.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < points.length; secondIndex += 1) {
+      const first = points[firstIndex];
+      const second = points[secondIndex];
+      const dx = second.x - first.x;
+      const dy = second.y - first.y;
+      const length = Math.hypot(dx, dy);
+      if (length < 72 || Math.abs(dx) < 14 || Math.abs(dy) < 14) continue;
+      const projected = projectPointToLine(point, first, second);
+      if (projected.ratio < -0.28 || projected.ratio > 1.28) continue;
+      candidates.push({
+        type: "free",
+        index: first.index,
+        label: `${first.label}-${second.label}`,
+        value: 0,
+        line: { x1: first.x, y1: first.y, x2: second.x, y2: second.y },
+        distance: projected.distance,
+        projected: projected.point
+      });
+    }
+  }
+
+  points.forEach((target) => {
+    const downValue = target.x - target.y;
+    const downOffset = (point.x - point.y) - downValue;
+    candidates.push({
+      type: "down",
+      index: target.index,
+      label: target.label,
+      value: downValue,
+      distance: Math.abs(downOffset) / Math.SQRT2,
+      projected: {
+        x: ((point.x + point.y + downValue) / 2),
+        y: ((point.x + point.y - downValue) / 2)
+      }
+    });
+
+    const upValue = target.x + target.y;
+    const upOffset = (point.x + point.y) - upValue;
+    candidates.push({
+      type: "up",
+      index: target.index,
+      label: target.label,
+      value: upValue,
+      distance: Math.abs(upOffset) / Math.SQRT2,
+      projected: {
+        x: ((point.x - point.y + upValue) / 2),
+        y: ((-point.x + point.y + upValue) / 2)
+      }
+    });
+  });
+
+  return candidates
+    .filter((candidate) => {
+      if (!Number.isFinite(candidate.distance) || candidate.distance > threshold) return false;
+      return candidate.projected.x >= 28 && candidate.projected.x <= 612
+        && candidate.projected.y >= 28 && candidate.projected.y <= 392;
+    })
+    .sort((a, b) => a.distance - b.distance)[0] || null;
+}
+
+function projectPointToLine(point, from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const lengthSquared = dx * dx + dy * dy || 1;
+  const ratio = ((point.x - from.x) * dx + (point.y - from.y) * dy) / lengthSquared;
+  const projected = {
+    x: from.x + dx * ratio,
+    y: from.y + dy * ratio
+  };
+  return {
+    ratio,
+    point: projected,
+    distance: Math.hypot(point.x - projected.x, point.y - projected.y)
+  };
 }
 
 function pointerToSketchPoint(svg, event) {

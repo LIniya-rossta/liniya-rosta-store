@@ -1800,9 +1800,20 @@ select {
   filter: drop-shadow(0 0 12px rgba(243, 220, 168, 0.42));
 }
 
+.sketch-snap-guide.is-diagonal {
+  stroke: rgba(255, 124, 190, 0.88);
+  stroke-width: 2.4;
+  stroke-dasharray: 12 7;
+  filter: drop-shadow(0 0 14px rgba(255, 124, 190, 0.42));
+}
+
 .sketch-snap-label rect {
   fill: rgba(7, 17, 26, 0.88);
   stroke: rgba(255, 255, 255, 0.18);
+}
+
+.sketch-snap-label.is-diagonal rect {
+  stroke: rgba(255, 124, 190, 0.36);
 }
 
 .sketch-snap-label text {
