@@ -574,7 +574,7 @@ function cleanInstallerExtraItems(source, activeProducts) {
   const byId = new Map();
   for (const item of source.slice(0, 80)) {
     const product = activeProducts.get(trimText(item.productId, 160));
-    if (!product) continue;
+    if (!product || isInstallerFilmMaterial(product)) continue;
     const unit = product.unit || "шт";
     const qty = clampQuantity(item.qty, unit);
     const previous = byId.get(product.id);

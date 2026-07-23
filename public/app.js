@@ -695,6 +695,10 @@ function isInstallerFilmMaterial(product) {
   return text.includes("плен") || text.includes("полотн");
 }
 
+function isInstallerExtraProduct(product) {
+  return product.active !== false && !isInstallerFilmMaterial(product);
+}
+
 function installerMaterialScore(product) {
   const text = `${product.title || ""} ${product.category || ""} ${product.unit || ""}`.toLowerCase();
   if (text.includes("плен") || text.includes("полотн")) return 3;
@@ -729,13 +733,13 @@ function materialPickerTemplate(materials) {
 }
 
 function installerExtrasTemplate() {
-  const products = getStoreProducts().filter((product) => product.active !== false);
+  const products = getStoreProducts().filter(isInstallerExtraProduct);
   const categories = ["Все", ...new Set(products.map((product) => product.category || "Без категории"))];
   return `
     <div class="installer-extra full" id="installerExtraProducts">
       <div class="extra-head">
         <span class="field-title">Доптовары</span>
-        <small>Добавьте профиль, свет, багет, крепеж или любой другой товар из каталога.</small>
+        <small>Добавьте профиль, свет, багет, крепеж и другие комплектующие без полотна.</small>
       </div>
       <button class="material-trigger extra-trigger" type="button" aria-expanded="false" data-extra-trigger>
         <span class="material-thumb is-empty">+</span>
@@ -1618,7 +1622,7 @@ function refreshInstallerExtraSelected() {
 
 function addInstallerExtra(productId) {
   const product = findProduct(productId);
-  if (!product || product.active === false) return;
+  if (!product || !isInstallerExtraProduct(product)) return;
   setInstallerExtraQty(productId, (state.installerExtras[productId] || 0) + defaultQty(product));
   toast("Доптовар добавлен в заявку.");
 }
@@ -1635,7 +1639,7 @@ function getInstallerExtraLines() {
   const products = getStoreProducts();
   return Object.entries(state.installerExtras || {})
     .map(([productId, qty]) => {
-      const product = products.find((item) => item.id === productId && item.active !== false);
+      const product = products.find((item) => item.id === productId && isInstallerExtraProduct(item));
       return product ? { product, qty } : null;
     })
     .filter(Boolean);
