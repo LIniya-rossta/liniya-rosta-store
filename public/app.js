@@ -84,6 +84,7 @@ const state = {
   managersLoading: false,
   managersLoaded: false,
   installerSketch: createDefaultSketch(),
+  installerHistory: [],
   installerPhoto: null
 };
 
@@ -379,6 +380,7 @@ function renderInstaller() {
             </div>
             <div class="sketch-actions">
               <button type="button" data-sketch-template="rectangle">Прямоугольник</button>
+              <button type="button" data-sketch-add-point>Добавить точку</button>
               <button type="button" data-sketch-autofit>Выровнять</button>
               <button type="button" data-sketch-reset>Сброс</button>
               <button type="button" data-sketch-undo>Назад</button>
@@ -1053,6 +1055,32 @@ function dimensionPlaceholder(value) {
   return formatQty(number);
 }
 
+function cloneInstallerSketch(sketch = state.installerSketch) {
+  return {
+    ...sketch,
+    points: (sketch.points || []).map((point) => ({ ...point })),
+    dimensions: { ...(sketch.dimensions || {}) },
+    diagonals: { ...(sketch.diagonals || {}) },
+    holes: (sketch.holes || []).map((hole) => ({ ...hole })),
+    warnings: Array.isArray(sketch.warnings) ? [...sketch.warnings] : []
+  };
+}
+
+function pushInstallerHistory(snapshot = state.installerSketch) {
+  state.installerHistory = [cloneInstallerSketch(snapshot), ...(state.installerHistory || [])].slice(0, 40);
+}
+
+function restoreInstallerHistory() {
+  const previous = state.installerHistory?.shift();
+  if (!previous) {
+    toast("Нет предыдущего действия.");
+    return false;
+  }
+  state.installerSketch = cloneInstallerSketch(previous);
+  normalizeSketchDimensionState();
+  return true;
+}
+
 function bindCatalogControls() {
   const searchInput = document.getElementById("searchInput");
   searchInput?.addEventListener("input", (event) => {
@@ -1300,6 +1328,7 @@ function bindInstallerSketch() {
   if (!board) return;
   let dragIndex = null;
   let dragMoved = false;
+  let dragStartSketch = null;
   let suppressNextClick = false;
 
   const renderSketch = () => {
@@ -1341,6 +1370,7 @@ function bindInstallerSketch() {
     if (!pointNode || !svg) return;
     dragIndex = Number(pointNode.dataset.sketchPoint);
     dragMoved = false;
+    dragStartSketch = cloneInstallerSketch();
     board.setPointerCapture?.(event.pointerId);
   });
 
@@ -1360,36 +1390,44 @@ function bindInstallerSketch() {
   board.addEventListener("pointerup", (event) => {
     if (dragIndex !== null && dragMoved) {
       suppressNextClick = true;
+      pushInstallerHistory(dragStartSketch);
       state.installerSketch.shapeType = "custom";
       state.installerSketch.aiDraft = false;
       applySketchDimensionsToGeometry();
       renderSketch();
     }
     dragIndex = null;
+    dragStartSketch = null;
     board.releasePointerCapture?.(event.pointerId);
   });
 
   document.querySelector("[data-sketch-reset]")?.addEventListener("click", () => {
+    pushInstallerHistory();
     state.installerSketch = createDefaultSketch();
     renderSketch();
   });
 
   document.querySelectorAll("[data-sketch-template]").forEach((button) => {
     button.addEventListener("click", () => {
+      pushInstallerHistory();
       state.installerSketch = button.dataset.sketchTemplate === "lshape" ? createLShapeSketch() : createDefaultSketch();
       renderSketch();
     });
   });
 
+  document.querySelector("[data-sketch-add-point]")?.addEventListener("click", () => {
+    insertPointOnActiveEdge();
+    renderSketch();
+  });
+
   document.querySelector("[data-sketch-autofit]")?.addEventListener("click", () => {
+    pushInstallerHistory();
     repairSketchLayout();
     renderSketch();
   });
 
   document.querySelector("[data-sketch-undo]")?.addEventListener("click", () => {
-    if (state.installerSketch.points.length > 4) state.installerSketch.points.pop();
-    cleanSketchAfterPointChange();
-    renderSketch();
+    if (restoreInstallerHistory()) renderSketch();
   });
 
   document.querySelector("[data-ai-draft]")?.addEventListener("click", async (event) => {
@@ -1407,6 +1445,7 @@ function bindInstallerSketch() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "AI не смог распознать фото");
+      pushInstallerHistory();
       applyInstallerAiDraft(data.draft || {});
       renderSketch();
       const confidence = data.draft?.confidence ? ` Уверенность: ${Math.round(data.draft.confidence * 100)}%.` : "";
@@ -1474,24 +1513,40 @@ function bindSketchDimensionInputs() {
     bindSketchDimensionInputs();
   };
 
+  const commitDimensionInput = (input, type) => {
+    const store = type === "diagonal" ? state.installerSketch.diagonals : state.installerSketch.dimensions;
+    const value = parseDimension(input.value);
+    const key = type === "diagonal" ? input.dataset.sketchDiagonal : input.dataset.sketchDimension;
+    const current = Number(store[key] || 0);
+    if (value === current) return;
+    pushInstallerHistory();
+    if (value) store[key] = value;
+    else delete store[key];
+    applySketchDimensionsToGeometry();
+    rerenderSketchSurface();
+  };
+  const inputTimers = new WeakMap();
+  const scheduleDimensionCommit = (input, type) => {
+    clearTimeout(inputTimers.get(input));
+    inputTimers.set(input, setTimeout(() => commitDimensionInput(input, type), 520));
+  };
+  const commitDimensionNow = (input, type) => {
+    clearTimeout(inputTimers.get(input));
+    commitDimensionInput(input, type);
+  };
+
   document.querySelectorAll("[data-sketch-dimension]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const value = parseDimension(input.value);
-      if (value) state.installerSketch.dimensions[input.dataset.sketchDimension] = value;
-      else delete state.installerSketch.dimensions[input.dataset.sketchDimension];
-      applySketchDimensionsToGeometry();
-      rerenderSketchSurface();
-    });
+    const commit = () => commitDimensionNow(input, "dimension");
+    input.addEventListener("input", () => scheduleDimensionCommit(input, "dimension"));
+    input.addEventListener("change", commit);
+    input.addEventListener("blur", commit);
   });
 
   document.querySelectorAll("[data-sketch-diagonal]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const value = parseDimension(input.value);
-      if (value) state.installerSketch.diagonals[input.dataset.sketchDiagonal] = value;
-      else delete state.installerSketch.diagonals[input.dataset.sketchDiagonal];
-      applySketchDimensionsToGeometry();
-      rerenderSketchSurface();
-    });
+    const commit = () => commitDimensionNow(input, "diagonal");
+    input.addEventListener("input", () => scheduleDimensionCommit(input, "diagonal"));
+    input.addEventListener("change", commit);
+    input.addEventListener("blur", commit);
   });
 
   document.querySelectorAll("[data-select-edge]").forEach((button) => {
@@ -1895,6 +1950,39 @@ function insertNotchOnActiveEdge(mode) {
   insertNotchOnEdge(edge.key, mode);
 }
 
+function insertPointOnActiveEdge() {
+  const edge = resolveSketchEdge();
+  if (!edge) return;
+  insertPointOnEdge(edge.key);
+}
+
+function insertPointOnEdge(edgeKey) {
+  const oldPoints = state.installerSketch.points;
+  const oldEdges = sketchEdges(oldPoints);
+  const edge = oldEdges.find((item) => item.key === edgeKey);
+  if (!edge || oldPoints.length >= 24) {
+    toast("Для этого чертежа уже достаточно точек.");
+    return;
+  }
+  pushInstallerHistory();
+  const midpoint = clampSketchPoint({ label: "", ...edge.midpoint });
+  const nextPoints = [
+    ...oldPoints.slice(0, edge.index + 1),
+    midpoint,
+    ...oldPoints.slice(edge.index + 1)
+  ];
+  relabelSketchPoints(nextPoints);
+  const oldDimensions = { ...(state.installerSketch.dimensions || {}) };
+  state.installerSketch.points = nextPoints;
+  state.installerSketch.dimensions = remapDimensionsAfterInsert(oldEdges, edge.index, oldDimensions);
+  state.installerSketch.diagonals = {};
+  state.installerSketch.shapeType = "custom";
+  state.installerSketch.aiDraft = false;
+  const newEdges = sketchEdges(state.installerSketch.points);
+  state.installerSketch.activeEdgeKey = newEdges[edge.index]?.key || newEdges[0]?.key;
+  normalizeSketchDimensionState();
+}
+
 function insertNotchOnEdge(edgeKey, mode = "in") {
   const oldPoints = state.installerSketch.points;
   const oldEdges = sketchEdges(oldPoints);
@@ -1911,6 +1999,7 @@ function insertNotchOnEdge(edgeKey, mode = "in") {
     toast("Сторона короткая. Выберите более длинную сторону.");
     return;
   }
+  pushInstallerHistory();
 
   const unit = { x: dx / length, y: dy / length };
   let normal = { x: -unit.y, y: unit.x };
@@ -2028,6 +2117,7 @@ function addSketchHole(type) {
   const holes = state.installerSketch.holes || [];
   const edge = resolveSketchEdge();
   const point = defaultHolePoint(type, edge, holes.length);
+  pushInstallerHistory();
   holes.push({
     type: ["pipe", "lamp", "spot"].includes(type) ? type : "other",
     label: holeTypeLabel(type),
@@ -2129,8 +2219,11 @@ function repairRectangleLayout() {
   const edgeValues = sketchEdges(state.installerSketch.points).map((edge) => oldDimensions[edge.key] || edge.estimated || 0);
   const widthMeters = edgeValues[0] || edgeValues[2] || 4;
   const heightMeters = edgeValues[1] || edgeValues[3] || 2.6;
-  const width = Math.max(210, Math.min(520, widthMeters * 125));
-  const height = Math.max(150, Math.min(300, heightMeters * 105));
+  const safeWidthMeters = Math.max(0.1, Number(widthMeters));
+  const safeHeightMeters = Math.max(0.1, Number(heightMeters));
+  const scale = Math.min(520 / safeWidthMeters, 320 / safeHeightMeters, 130);
+  const width = Math.round(safeWidthMeters * scale);
+  const height = Math.round(safeHeightMeters * scale);
   const left = 320 - width / 2;
   const top = 210 - height / 2;
   state.installerSketch.points = [
