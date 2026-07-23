@@ -365,8 +365,8 @@ function renderInstaller() {
       <div class="shop-title reveal">
         <div>
           <span class="overline">Монтажникам</span>
-          <h1>Чертеж и заявка на полотно</h1>
-          <p>Выберите материал, менеджера и отправьте замер напрямую в Telegram.</p>
+          <h1>Мастерская</h1>
+          <p>Соберите точный замер, выберите полотно и отправьте заявку менеджеру за считанные секунды.</p>
         </div>
         <a class="btn btn-soft" href="/catalog" data-link>Каталог</a>
       </div>
