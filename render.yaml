@@ -35,6 +35,8 @@ services:
         sync: false
       - key: TELEGRAM_ADMIN_SESSION_HOURS
         value: "12"
+      - key: TELEGRAM_MANAGER_SESSION_HOURS
+        value: "12"
       - key: TELEGRAM_MANAGER_1_NAME
         value: "Менеджер 1"
       - key: TELEGRAM_MANAGER_1_PASSWORD

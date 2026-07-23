@@ -32,6 +32,7 @@ TELEGRAM_DELETE_WEBHOOK_ON_POLLING=false
 - `/cart` - отдельная корзина с количеством, суммой и переходом к оформлению.
 - `/checkout` - отдельная страница оформления: имя, телефон, адрес, доставка/самовывоз и комментарий.
 - `/measure` - заявка на онлайн-замер от 50 м².
+- `/installer` - пространство монтажников: чертежи полотен, выбор пленки, доптовары, менеджер и отправка заявки в Telegram.
 - `/success` - анимированный экран после отправки заказа.
 
 ## Telegram-админка
@@ -63,6 +64,45 @@ TELEGRAM_ADMIN_SESSION_HOURS=12
 ```
 
 Пароль не хранить в GitHub.
+
+## Менеджеры монтажников
+
+Раздел `/installer` отправляет заявки выбранному менеджеру. Менеджер один раз открывает Telegram-бота, нажимает `Менеджер` или пишет `/manager`, вводит только свой пароль, и бот привязывает этот Telegram-чат к менеджеру. После этого заявки монтажников с сайта приходят именно этому менеджеру. Если менеджер еще не привязал Telegram, заявка придет администраторам.
+
+Нужно настроить 4 менеджеров через переменные окружения:
+
+```env
+TELEGRAM_MANAGER_SESSION_HOURS=12
+TELEGRAM_MANAGER_1_NAME=Менеджер 1
+TELEGRAM_MANAGER_1_PASSWORD=пароль_менеджера_1
+TELEGRAM_MANAGER_2_NAME=Менеджер 2
+TELEGRAM_MANAGER_2_PASSWORD=пароль_менеджера_2
+TELEGRAM_MANAGER_3_NAME=Менеджер 3
+TELEGRAM_MANAGER_3_PASSWORD=пароль_менеджера_3
+TELEGRAM_MANAGER_4_NAME=Менеджер 4
+TELEGRAM_MANAGER_4_PASSWORD=пароль_менеджера_4
+```
+
+Пароли менеджеров тоже не хранить в GitHub. На локальном запуске, если пароли не заданы и это не Render, включаются демо-пароли `285801`-`285804`. На Render демо-пароли не включаются.
+
+## AI для чертежей
+
+Кнопка распознавания фото в пространстве монтажников работает через OpenAI Responses API. Код уже подключен, но на сервере должен быть задан API-ключ:
+
+```env
+OPENAI_API_KEY=ваш_openai_api_key
+OPENAI_INSTALLER_AI_MODEL=gpt-5.6
+```
+
+Если `OPENAI_API_KEY` не задан, сайт честно покажет, что AI не подключен. После добавления ключа в Render нужно сделать redeploy.
+
+Проверка настройки:
+
+```text
+https://ваш-домен/api/health
+```
+
+В ответе `setup.missing` должно быть пустым, `telegramManagers` должно быть `4`, а `installerAi` должно быть `true`.
 
 ## Telegram по домену
 
@@ -135,8 +175,19 @@ TELEGRAM_OBSERVER_IDS=8906052538
 TELEGRAM_ADMIN_LOGIN=LiniyaRosta
 TELEGRAM_ADMIN_PASSWORD=пароль_админки
 TELEGRAM_ADMIN_SESSION_HOURS=12
+TELEGRAM_MANAGER_SESSION_HOURS=12
+TELEGRAM_MANAGER_1_NAME=Менеджер 1
+TELEGRAM_MANAGER_1_PASSWORD=пароль_менеджера_1
+TELEGRAM_MANAGER_2_NAME=Менеджер 2
+TELEGRAM_MANAGER_2_PASSWORD=пароль_менеджера_2
+TELEGRAM_MANAGER_3_NAME=Менеджер 3
+TELEGRAM_MANAGER_3_PASSWORD=пароль_менеджера_3
+TELEGRAM_MANAGER_4_NAME=Менеджер 4
+TELEGRAM_MANAGER_4_PASSWORD=пароль_менеджера_4
 TELEGRAM_BOT_TOKEN=новый_токен_из_BotFather
 TELEGRAM_WEBHOOK_SECRET=любая_длинная_случайная_строка
+OPENAI_API_KEY=ваш_openai_api_key
+OPENAI_INSTALLER_AI_MODEL=gpt-5.6
 COMPANY_WHATSAPP=996990883883
 ```
 

@@ -176,6 +176,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/api/health") {
+      const setup = setupStatus();
       return json(res, 200, {
         ok: true,
         telegramPanel: "admin-v2",
@@ -186,7 +187,8 @@ const server = http.createServer(async (req, res) => {
         telegramAdminPassword: Boolean(TELEGRAM_ADMIN_PASSWORD),
         telegramManagers: TELEGRAM_MANAGERS.length,
         telegramReady: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMIN_PASSWORD && TELEGRAM_MANAGERS.length),
-        installerAi: Boolean(OPENAI_API_KEY)
+        installerAi: Boolean(OPENAI_API_KEY),
+        setup
       });
     }
 
@@ -249,6 +251,24 @@ function getTelegramManagers() {
     { id: "manager-3", name: "Менеджер 3", password: "285803" },
     { id: "manager-4", name: "Менеджер 4", password: "285804" }
   ];
+}
+
+function setupStatus() {
+  const missing = [];
+  if (!TELEGRAM_BOT_TOKEN) missing.push("TELEGRAM_BOT_TOKEN");
+  if (!TELEGRAM_ADMIN_PASSWORD) missing.push("TELEGRAM_ADMIN_PASSWORD");
+  if (!TELEGRAM_MANAGERS.length) missing.push("TELEGRAM_MANAGER_1_PASSWORD..TELEGRAM_MANAGER_4_PASSWORD");
+  if (!OPENAI_API_KEY) missing.push("OPENAI_API_KEY");
+
+  return {
+    ready: !missing.length,
+    missing,
+    managers: TELEGRAM_MANAGERS.map((manager) => ({
+      id: manager.id,
+      name: manager.name
+    })),
+    aiModel: OPENAI_INSTALLER_AI_MODEL
+  };
 }
 
 function ensureStorage() {
@@ -2165,11 +2185,18 @@ async function notifyInstallerManagers(request) {
 }
 
 async function sendInstallerRequestFiles(chatId, request) {
-  const drawingPath = uploadUrlToLocalPath(request.sketchDrawing?.url);
-  if (drawingPath) {
-    await sendTelegramDocument(chatId, drawingPath, `Чертеж ${request.id}: стороны подписаны в метрах`).catch((error) => {
-      console.error("Cannot send generated drawing:", error.message);
-    });
+  const drawings = Array.isArray(request.sketchDrawings) && request.sketchDrawings.length
+    ? request.sketchDrawings
+    : [request.sketchDrawing].filter(Boolean);
+
+  for (const [index, drawing] of drawings.entries()) {
+    const drawingPath = uploadUrlToLocalPath(drawing?.url);
+    if (drawingPath) {
+      const title = drawing?.title || `Полотно ${index + 1}`;
+      await sendTelegramDocument(chatId, drawingPath, `${title}: стороны подписаны в метрах`).catch((error) => {
+        console.error("Cannot send generated drawing:", error.message);
+      });
+    }
   }
 
   const photoPath = uploadUrlToLocalPath(request.sketchPhoto?.url);
