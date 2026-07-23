@@ -176,6 +176,7 @@ function renderHome() {
           <a class="btn btn-primary" href="${whatsAppLink("Здравствуйте! Хочу связаться с Линией Роста.")}" target="_blank" rel="noreferrer">Связаться с нами</a>
           <a class="btn btn-primary" href="/catalog" data-link>Перейти в каталог</a>
           <a class="btn btn-soft" href="/measure" data-link>Заказать замер от 50 м²</a>
+          <a class="btn btn-soft" href="/installer" data-link>Пространство для монтажников</a>
         </div>
       </div>
 
