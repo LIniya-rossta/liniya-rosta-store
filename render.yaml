@@ -38,19 +38,19 @@ services:
       - key: TELEGRAM_MANAGER_SESSION_HOURS
         value: "12"
       - key: TELEGRAM_MANAGER_1_NAME
-        value: "Менеджер 1"
+        value: "Катерина"
       - key: TELEGRAM_MANAGER_1_PASSWORD
         sync: false
       - key: TELEGRAM_MANAGER_2_NAME
-        value: "Менеджер 2"
+        value: "Тая"
       - key: TELEGRAM_MANAGER_2_PASSWORD
         sync: false
       - key: TELEGRAM_MANAGER_3_NAME
-        value: "Менеджер 3"
+        value: "Диана"
       - key: TELEGRAM_MANAGER_3_PASSWORD
         sync: false
       - key: TELEGRAM_MANAGER_4_NAME
-        value: "Менеджер 4"
+        value: "Татьяна"
       - key: TELEGRAM_MANAGER_4_PASSWORD
         sync: false
       - key: TELEGRAM_WEBHOOK_SECRET

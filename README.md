@@ -73,17 +73,30 @@ TELEGRAM_ADMIN_SESSION_HOURS=12
 
 ```env
 TELEGRAM_MANAGER_SESSION_HOURS=12
-TELEGRAM_MANAGER_1_NAME=Менеджер 1
+TELEGRAM_MANAGER_1_NAME=Катерина
 TELEGRAM_MANAGER_1_PASSWORD=пароль_менеджера_1
-TELEGRAM_MANAGER_2_NAME=Менеджер 2
+TELEGRAM_MANAGER_2_NAME=Тая
 TELEGRAM_MANAGER_2_PASSWORD=пароль_менеджера_2
-TELEGRAM_MANAGER_3_NAME=Менеджер 3
+TELEGRAM_MANAGER_3_NAME=Диана
 TELEGRAM_MANAGER_3_PASSWORD=пароль_менеджера_3
-TELEGRAM_MANAGER_4_NAME=Менеджер 4
+TELEGRAM_MANAGER_4_NAME=Татьяна
 TELEGRAM_MANAGER_4_PASSWORD=пароль_менеджера_4
 ```
 
 Пароли менеджеров тоже не хранить в GitHub. На локальном запуске, если пароли не заданы и это не Render, включаются демо-пароли `285801`-`285804`. На Render демо-пароли не включаются.
+
+Текущий временный список менеджеров:
+
+```text
+TELEGRAM_MANAGER_1_NAME=Катерина
+TELEGRAM_MANAGER_1_PASSWORD=указать в Render Environment
+TELEGRAM_MANAGER_2_NAME=Тая
+TELEGRAM_MANAGER_2_PASSWORD=указать в Render Environment
+TELEGRAM_MANAGER_3_NAME=Диана
+TELEGRAM_MANAGER_3_PASSWORD=указать в Render Environment
+TELEGRAM_MANAGER_4_NAME=Татьяна
+TELEGRAM_MANAGER_4_PASSWORD=указать в Render Environment
+```
 
 ## AI для чертежей
 
@@ -176,13 +189,13 @@ TELEGRAM_ADMIN_LOGIN=LiniyaRosta
 TELEGRAM_ADMIN_PASSWORD=пароль_админки
 TELEGRAM_ADMIN_SESSION_HOURS=12
 TELEGRAM_MANAGER_SESSION_HOURS=12
-TELEGRAM_MANAGER_1_NAME=Менеджер 1
+TELEGRAM_MANAGER_1_NAME=Катерина
 TELEGRAM_MANAGER_1_PASSWORD=пароль_менеджера_1
-TELEGRAM_MANAGER_2_NAME=Менеджер 2
+TELEGRAM_MANAGER_2_NAME=Тая
 TELEGRAM_MANAGER_2_PASSWORD=пароль_менеджера_2
-TELEGRAM_MANAGER_3_NAME=Менеджер 3
+TELEGRAM_MANAGER_3_NAME=Диана
 TELEGRAM_MANAGER_3_PASSWORD=пароль_менеджера_3
-TELEGRAM_MANAGER_4_NAME=Менеджер 4
+TELEGRAM_MANAGER_4_NAME=Татьяна
 TELEGRAM_MANAGER_4_PASSWORD=пароль_менеджера_4
 TELEGRAM_BOT_TOKEN=новый_токен_из_BotFather
 TELEGRAM_WEBHOOK_SECRET=любая_длинная_случайная_строка

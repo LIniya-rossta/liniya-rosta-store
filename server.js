@@ -42,6 +42,12 @@ const MAX_JSON_BODY_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_JSON_BO
 const COMPANY_WHATSAPP = process.env.COMPANY_WHATSAPP || "996990883883";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_INSTALLER_AI_MODEL = process.env.OPENAI_INSTALLER_AI_MODEL || "gpt-5.6";
+const DEFAULT_TELEGRAM_MANAGERS = [
+  { id: "manager-1", name: "Катерина" },
+  { id: "manager-2", name: "Тая" },
+  { id: "manager-3", name: "Диана" },
+  { id: "manager-4", name: "Татьяна" }
+];
 
 const PRODUCTS_FILE = path.join(DATA_DIR, "products.json");
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
@@ -186,7 +192,7 @@ const server = http.createServer(async (req, res) => {
         telegramWebhookSecret: Boolean(TELEGRAM_WEBHOOK_SECRET),
         telegramAdminPassword: Boolean(TELEGRAM_ADMIN_PASSWORD),
         telegramManagers: TELEGRAM_MANAGERS.length,
-        telegramReady: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMIN_PASSWORD && TELEGRAM_MANAGERS.length),
+        telegramReady: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMIN_PASSWORD && telegramManagersReady()),
         installerAi: Boolean(OPENAI_API_KEY),
         setup
       });
@@ -232,32 +238,38 @@ function deriveTelegramSecret(token) {
 }
 
 function getTelegramManagers() {
+  const localDemoPasswords = !RENDER_BASE_URL && process.env.ENABLE_LOCAL_MANAGER_DEMO_PASSWORDS !== "false";
   const configured = [1, 2, 3, 4]
-    .map((index) => ({
-      id: `manager-${index}`,
-      name: process.env[`TELEGRAM_MANAGER_${index}_NAME`] || `Менеджер ${index}`,
-      password: process.env[`TELEGRAM_MANAGER_${index}_PASSWORD`] || ""
-    }))
-    .filter((manager) => manager.password);
+    .map((index) => {
+      const fallback = DEFAULT_TELEGRAM_MANAGERS[index - 1] || { id: `manager-${index}`, name: `Менеджер ${index}` };
+      const envName = process.env[`TELEGRAM_MANAGER_${index}_NAME`] || "";
+      const name = envName && envName !== `Менеджер ${index}` ? envName : fallback.name;
+      return {
+        id: fallback.id,
+        name,
+        password: process.env[`TELEGRAM_MANAGER_${index}_PASSWORD`] || (localDemoPasswords ? `28580${index}` : "")
+      };
+    })
+    .filter((manager) => manager.name);
 
-  if (configured.length) return configured;
+  return configured;
+}
 
-  const localOnly = !RENDER_BASE_URL && process.env.ENABLE_LOCAL_MANAGER_DEMO_PASSWORDS !== "false";
-  if (!localOnly) return [];
+function telegramManagersReady() {
+  return Boolean(TELEGRAM_MANAGERS.length && TELEGRAM_MANAGERS.every((manager) => manager.password));
+}
 
-  return [
-    { id: "manager-1", name: "Менеджер 1", password: "285801" },
-    { id: "manager-2", name: "Менеджер 2", password: "285802" },
-    { id: "manager-3", name: "Менеджер 3", password: "285803" },
-    { id: "manager-4", name: "Менеджер 4", password: "285804" }
-  ];
+function telegramManagersWithPassword() {
+  return TELEGRAM_MANAGERS.filter((manager) => manager.password);
 }
 
 function setupStatus() {
   const missing = [];
   if (!TELEGRAM_BOT_TOKEN) missing.push("TELEGRAM_BOT_TOKEN");
   if (!TELEGRAM_ADMIN_PASSWORD) missing.push("TELEGRAM_ADMIN_PASSWORD");
-  if (!TELEGRAM_MANAGERS.length) missing.push("TELEGRAM_MANAGER_1_PASSWORD..TELEGRAM_MANAGER_4_PASSWORD");
+  TELEGRAM_MANAGERS.forEach((manager, index) => {
+    if (!manager.password) missing.push(`TELEGRAM_MANAGER_${index + 1}_PASSWORD`);
+  });
   if (!OPENAI_API_KEY) missing.push("OPENAI_API_KEY");
 
   return {
@@ -1354,7 +1366,7 @@ function markManagerSession(fromId, chatId, managerId) {
 }
 
 async function startManagerLogin(chatId, fromId) {
-  if (!TELEGRAM_MANAGERS.length) {
+  if (!telegramManagersWithPassword().length) {
     return sendStartMenu(chatId, "Пароли менеджеров не настроены на сервере.");
   }
   botState.set(stateKey(chatId, fromId), { flow: "manager_login", step: "password" });
@@ -1364,7 +1376,7 @@ async function startManagerLogin(chatId, fromId) {
 async function continueManagerLoginFlow(chatId, fromId, textValue, state, chat = {}) {
   if (state.step !== "password") return startManagerLogin(chatId, fromId);
 
-  const manager = TELEGRAM_MANAGERS.find((item) => item.password === textValue);
+  const manager = telegramManagersWithPassword().find((item) => item.password === textValue);
   if (!manager) {
     return sendMessage(chatId, "Пароль неверный. Попробуйте еще раз или нажмите /cancel.", cancelKeyboard());
   }
