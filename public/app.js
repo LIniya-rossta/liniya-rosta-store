@@ -91,6 +91,7 @@ const state = {
   category: "Все",
   search: "",
   cart: loadCart(),
+  installerDrafts: loadInstallerDrafts(),
   lastOrder: loadLastOrder(),
   theme: "dark",
   managerOptions: [],
@@ -102,6 +103,8 @@ const state = {
   installerHistory: {},
   installerExtras: {},
   installerPhoto: null,
+  installerFormDraft: null,
+  activeInstallerDraftId: null,
   installerHoleMode: null,
   installerDimensionDrafts: {},
   installerDimensionObserver: null,
@@ -262,18 +265,20 @@ function renderCatalog() {
 
 function renderCartPage() {
   const lines = getCartLines();
+  const drafts = getInstallerDrafts();
+  const hasCartContent = lines.length || drafts.length;
   elements.app.innerHTML = `
     <section class="cart-page page-section">
       <div class="shop-title reveal">
         <div>
           <span class="overline">Корзина</span>
           <h1>Ваш заказ</h1>
-          <p>Проверьте позиции и количество, затем переходите к оформлению заказа.</p>
+          <p>Проверьте товары и сохраненные заявки мастерской, затем продолжайте оформление.</p>
         </div>
         <a class="btn btn-soft" href="/catalog" data-link>Вернуться в каталог</a>
       </div>
 
-      ${lines.length ? cartLayout(lines) : emptyCart()}
+      ${hasCartContent ? cartLayout(lines, drafts) : emptyCart()}
     </section>
   `;
   bindCartControls();
@@ -377,8 +382,16 @@ function renderMeasure() {
 }
 
 function renderInstaller() {
+  restoreInstallerDraftFromUrl();
   ensureInstallerSketches();
-  const ready = kyrgyzInputDateTime();
+  const readyDefault = kyrgyzInputDateTime();
+  const draftForm = state.installerFormDraft || {};
+  const ready = {
+    ...readyDefault,
+    date: draftForm.readyDate || readyDefault.date,
+    time: draftForm.readyTime || readyDefault.time
+  };
+  const method = draftForm.method === "pickup" ? "pickup" : "delivery";
   const materials = installerMaterials();
   const calculatedStats = installerSketchesMeasuredStats();
 
@@ -433,14 +446,14 @@ function renderInstaller() {
         </section>
 
         <form class="checkout-card checkout-form installer-form" id="installerForm">
-          <label><span>Имя монтажника</span><input name="name" required autocomplete="name" placeholder="Ваше имя"></label>
-          <label><span>Телефон</span><input name="phone" required autocomplete="tel" inputmode="tel" value="+996 " placeholder="+996 ..." data-phone-autocode="+996 "></label>
-          <label class="full"><span>Адрес объекта</span><input name="objectAddress" required autocomplete="street-address" placeholder="Район, улица, дом"></label>
-          ${materialPickerTemplate(materials)}
+          <label><span>Имя монтажника</span><input name="name" required autocomplete="name" placeholder="Ваше имя" value="${escapeHtml(draftForm.name || "")}"></label>
+          <label><span>Телефон</span><input name="phone" required autocomplete="tel" inputmode="tel" value="${escapeHtml(draftForm.phone || "+996 ")}" placeholder="+996 ..." data-phone-autocode="+996 "></label>
+          <label class="full"><span>Адрес объекта</span><input name="objectAddress" required autocomplete="street-address" placeholder="Район, улица, дом" value="${escapeHtml(draftForm.objectAddress || "")}"></label>
+          ${materialPickerTemplate(materials, draftForm.materialId)}
           <label>
             <span>Менеджер</span>
             <select name="managerId" required>
-              ${managerOptionsTemplate()}
+              ${managerOptionsTemplate(draftForm.managerId)}
             </select>
           </label>
           <label><span>Площадь, м²</span><input name="area" type="number" min="0" step="0.1" inputmode="decimal" value="${escapeHtml(inputQtyValue(calculatedStats.area))}" data-installer-area readonly></label>
@@ -449,11 +462,11 @@ function renderInstaller() {
 
           <fieldset>
             <legend>Получение</legend>
-            <label><input type="radio" name="method" value="delivery" checked> Доставка</label>
-            <label><input type="radio" name="method" value="pickup"> Самовывоз</label>
+            <label><input type="radio" name="method" value="delivery" ${method === "delivery" ? "checked" : ""}> Доставка</label>
+            <label><input type="radio" name="method" value="pickup" ${method === "pickup" ? "checked" : ""}> Самовывоз</label>
           </fieldset>
 
-          <label class="full" id="installerDeliveryAddressField"><span>Адрес доставки</span><input name="deliveryAddress" required placeholder="Куда доставить готовое полотно"></label>
+          <label class="full" id="installerDeliveryAddressField"><span>Адрес доставки</span><input name="deliveryAddress" required placeholder="Куда доставить готовое полотно" value="${escapeHtml(draftForm.deliveryAddress || "")}"></label>
 
           <div class="ready-field ready-date-field" data-ready-date-field>
             <span>Дата готовности</span>
@@ -476,8 +489,11 @@ function renderInstaller() {
             <input name="readyTime" type="hidden" value="${ready.time}" data-ready-time>
           </div>
 
-          <label class="full"><span>Комментарий</span><textarea name="comment" rows="4" placeholder="Ниши, трубы, углы, пожелания по доставке"></textarea></label>
-          <button class="btn btn-primary full" type="submit">Отправить менеджеру</button>
+          <label class="full"><span>Комментарий</span><textarea name="comment" rows="4" placeholder="Ниши, трубы, углы, пожелания по доставке">${escapeHtml(draftForm.comment || "")}</textarea></label>
+          <div class="installer-form-actions full">
+            <button class="btn btn-soft" type="button" data-save-installer-draft>${state.activeInstallerDraftId ? "Обновить в корзине" : "Добавить заявку в корзину"}</button>
+            <button class="btn btn-primary" type="submit">Отправить менеджеру</button>
+          </div>
           <p class="form-note full" id="installerNote"></p>
         </form>
       </div>
@@ -495,6 +511,7 @@ function renderInstaller() {
   bindInstallerMaterialPicker();
   bindInstallerExtras();
   syncInstallerCalculatedFields();
+  document.querySelector("[data-save-installer-draft]")?.addEventListener("click", saveInstallerDraftToCart);
   document.getElementById("installerForm")?.addEventListener("submit", submitInstallerRequest);
 }
 
@@ -573,7 +590,7 @@ function productCardCartControl(product) {
   return `<button class="add-to-cart" type="button" data-add="${escapeHtml(productId)}">Добавить в корзину</button>`;
 }
 
-function cartLayout(lines) {
+function cartLayout(lines, installerDrafts = getInstallerDrafts()) {
   return `
     <div class="cart-grid reveal">
       <div class="cart-list">
@@ -591,12 +608,53 @@ function cartLayout(lines) {
             <strong class="line-total">${formatMoney(Number(product.price || 0) * qty)}</strong>
           </article>
         `).join("")}
+        ${installerDrafts.map((draft) => installerDraftCartItem(draft)).join("")}
       </div>
       <aside class="checkout-card order-summary sticky-summary">
         <span class="overline">Сумма заказа</span>
-        ${checkoutSummary(lines)}
-        <a class="btn btn-primary full" href="/checkout" data-link>Перейти к оформлению</a>
+        ${lines.length ? checkoutSummary(lines) : `<p class="summary-muted">Товаров для обычного оформления пока нет.</p>`}
+        ${installerDrafts.length ? installerDraftSummary(installerDrafts) : ""}
+        ${lines.length
+          ? `<a class="btn btn-primary full" href="/checkout" data-link>Перейти к оформлению</a>`
+          : `<a class="btn btn-primary full" href="/installer" data-link>Открыть мастерскую</a>`}
       </aside>
+    </div>
+  `;
+}
+
+function installerDraftCartItem(draft) {
+  const material = findProduct(draft.form?.materialId);
+  const managerName = managerDisplayName(draft.form?.managerId);
+  const stats = draft.stats || {};
+  const sketchesCount = Array.isArray(draft.sketches) && draft.sketches.length ? draft.sketches.length : 1;
+  return `
+    <article class="cart-item installer-draft-item">
+      <div class="cart-item-media installer-draft-media">
+        <span>М</span>
+      </div>
+      <div class="installer-draft-copy">
+        <span class="overline">Заявка мастерской</span>
+        <h3>${escapeHtml(draft.form?.objectAddress || "Черновик замера")}</h3>
+        <p>${escapeHtml(material?.title || "Полотно не выбрано")} · ${sketchesCount} ${plural(sketchesCount, "чертеж", "чертежа", "чертежей")}</p>
+        <div class="installer-draft-meta">
+          <span>${formatQty(stats.area || 0)} м²</span>
+          <span>${formatQty(stats.perimeter || 0)} м</span>
+          <span>${escapeHtml(managerName)}</span>
+        </div>
+      </div>
+      <div class="installer-draft-actions">
+        <a class="btn btn-primary" href="/installer?draft=${encodeURIComponent(draft.id)}" data-link>Продолжить</a>
+        <button type="button" data-remove-installer-draft="${escapeHtml(draft.id)}">Удалить</button>
+      </div>
+    </article>
+  `;
+}
+
+function installerDraftSummary(drafts) {
+  return `
+    <div class="installer-draft-summary">
+      <span>Черновики мастерской</span>
+      <strong>${drafts.length}</strong>
     </div>
   `;
 }
@@ -625,8 +683,11 @@ function emptyCart() {
     <div class="empty-shop reveal">
       <div class="empty-animation" aria-hidden="true"><span></span><span></span><span></span></div>
       <h2>Корзина пока пустая</h2>
-      <p>Добавьте товары из каталога, а затем оформите заказ с доставкой или самовывозом.</p>
-      <a class="btn btn-primary" href="/catalog" data-link>Перейти в каталог</a>
+      <p>Добавьте товары из каталога или сохраните заявку из мастерской, чтобы вернуться к ней позже.</p>
+      <div class="action-row center-actions">
+        <a class="btn btn-primary" href="/catalog" data-link>Перейти в каталог</a>
+        <a class="btn btn-soft" href="/installer" data-link>Открыть мастерскую</a>
+      </div>
     </div>
   `;
 }
@@ -730,8 +791,8 @@ function installerMaterialScore(product) {
   return 0;
 }
 
-function materialPickerTemplate(materials) {
-  const selected = materials[0] || {};
+function materialPickerTemplate(materials, selectedMaterialId = "") {
+  const selected = materials.find((product) => product.id === selectedMaterialId) || materials[0] || {};
   const categories = ["Все", ...new Set(materials.map((product) => product.category || "Без категории"))];
   return `
     <div class="material-picker full" id="installerMaterialPicker">
@@ -748,7 +809,7 @@ function materialPickerTemplate(materials) {
           ${categories.map((category, index) => `<button type="button" data-material-category="${escapeHtml(category)}" class="${index === 0 ? "is-active" : ""}">${escapeHtml(category)}</button>`).join("")}
         </div>
         <div class="material-options">
-          ${materials.map((product, index) => materialOptionTemplate(product, index === 0)).join("")}
+          ${materials.map((product) => materialOptionTemplate(product, product.id === selected.id)).join("")}
         </div>
       </div>
     </div>
@@ -906,11 +967,11 @@ function materialMeta(product) {
   ].filter(Boolean).join(" · ");
 }
 
-function managerOptionsTemplate() {
+function managerOptionsTemplate(selectedManagerId = "") {
   const managers = state.managerOptions.length ? state.managerOptions : defaultManagers;
   if (managers.length) {
     return managers
-      .map((manager) => `<option value="${escapeHtml(manager.id)}">${escapeHtml(manager.name)}</option>`)
+      .map((manager) => `<option value="${escapeHtml(manager.id)}" ${manager.id === selectedManagerId ? "selected" : ""}>${escapeHtml(manager.name)}</option>`)
       .join("");
   }
   if (state.managersLoaded) return `<option value="">Менеджеры не настроены</option>`;
@@ -1568,6 +1629,147 @@ function getInstallerMissingDimensions() {
     .map((edge) => `${sketch.title || `Полотно ${index + 1}`}: ${edge.key}`));
 }
 
+function getInstallerDrafts() {
+  return Array.isArray(state.installerDrafts)
+    ? state.installerDrafts.filter((draft) => draft && draft.id)
+    : [];
+}
+
+function restoreInstallerDraftFromUrl() {
+  const draftId = new URLSearchParams(window.location.search).get("draft");
+  if (!draftId || draftId === state.activeInstallerDraftId) return;
+  const draft = getInstallerDrafts().find((item) => item.id === draftId);
+  if (!draft) {
+    toast("Черновик заявки не найден в корзине.");
+    return;
+  }
+  applyInstallerDraft(draft);
+}
+
+function applyInstallerDraft(draft) {
+  const sketches = Array.isArray(draft.sketches) && draft.sketches.length
+    ? draft.sketches
+    : [createDefaultSketch()];
+  state.activeInstallerDraftId = draft.id;
+  state.installerFormDraft = { ...(draft.form || {}) };
+  state.installerSketches = sketches.map((sketch, index) => prepareInstallerSketch(sketch, index));
+  state.activeInstallerSketchIndex = 0;
+  state.installerSketch = state.installerSketches[0];
+  state.installerHistory = {};
+  state.installerExtras = {};
+  (draft.extraItems || []).forEach((item) => {
+    const product = findProduct(item.productId);
+    const qty = normalizeQty(product || {}, item.qty);
+    if (item.productId && qty > 0) state.installerExtras[item.productId] = qty;
+  });
+  state.installerPhoto = draft.sketchPhoto || null;
+  normalizeSketchDimensionState();
+}
+
+function collectInstallerFormValues(form) {
+  const data = new FormData(form);
+  const ready = kyrgyzInputDateTime();
+  const method = data.get("method") === "pickup" ? "pickup" : "delivery";
+  return {
+    name: String(data.get("name") || "").trim(),
+    phone: String(data.get("phone") || "").trim(),
+    objectAddress: String(data.get("objectAddress") || "").trim(),
+    materialId: String(data.get("materialId") || "").trim(),
+    managerId: String(data.get("managerId") || "").trim(),
+    method,
+    deliveryAddress: method === "delivery" ? String(data.get("deliveryAddress") || "").trim() : "",
+    readyDate: String(data.get("readyDate") || ready.date),
+    readyTime: String(data.get("readyTime") || ready.time),
+    comment: String(data.get("comment") || "").trim()
+  };
+}
+
+function createInstallerCartDraft(form) {
+  ensureInstallerSketches();
+  const now = new Date().toISOString();
+  const formValues = collectInstallerFormValues(form);
+  const existing = getInstallerDrafts().find((draft) => draft.id === state.activeInstallerDraftId);
+  return {
+    id: existing?.id || createInstallerDraftId(),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+    form: formValues,
+    stats: installerSketchesMeasuredStats(),
+    extraItems: getInstallerExtraLines().map(({ product, qty }) => ({ productId: product.id, qty })),
+    sketches: getInstallerSketchPayloads(),
+    sketchPhoto: state.installerPhoto
+  };
+}
+
+function saveInstallerDraftToCart() {
+  const form = document.getElementById("installerForm");
+  const note = document.getElementById("installerNote");
+  if (!form) return;
+
+  const draft = createInstallerCartDraft(form);
+  const previousDrafts = getInstallerDrafts();
+  const saveCandidate = (candidate) => {
+    state.installerDrafts = [
+      candidate,
+      ...previousDrafts.filter((item) => item.id !== candidate.id)
+    ].slice(0, 12);
+    return saveInstallerDrafts();
+  };
+
+  let savedDraft = draft;
+  let message = "Заявка сохранена в корзине. Можно вернуться к ней позже.";
+  if (!saveCandidate(draft)) {
+    savedDraft = { ...draft, sketchPhoto: null };
+    message = "Заявка сохранена в корзине без фото: файл слишком большой.";
+    if (!saveCandidate(savedDraft)) {
+      state.installerDrafts = previousDrafts;
+      saveInstallerDrafts();
+      setNote(note, "Не удалось сохранить заявку в корзину. Попробуйте убрать большое фото.", true);
+      return;
+    }
+  }
+
+  state.activeInstallerDraftId = savedDraft.id;
+  state.installerFormDraft = savedDraft.form;
+  state.installerPhoto = savedDraft.sketchPhoto || null;
+  updateCartCount();
+  setNote(note, message, false);
+  document.querySelector("[data-save-installer-draft]")?.replaceChildren(
+    document.createTextNode("Обновить в корзине")
+  );
+  toast("Заявка мастерской добавлена в корзину.");
+}
+
+function removeInstallerDraft(draftId) {
+  state.installerDrafts = getInstallerDrafts().filter((draft) => draft.id !== draftId);
+  if (state.activeInstallerDraftId === draftId) {
+    state.activeInstallerDraftId = null;
+    state.installerFormDraft = null;
+  }
+  saveInstallerDrafts();
+  updateCartCount();
+  if (normalizePath(window.location.pathname) === "/cart") renderCartPage();
+  toast("Черновик мастерской удален.");
+}
+
+function discardActiveInstallerDraft() {
+  if (!state.activeInstallerDraftId) return;
+  state.installerDrafts = getInstallerDrafts().filter((draft) => draft.id !== state.activeInstallerDraftId);
+  state.activeInstallerDraftId = null;
+  state.installerFormDraft = null;
+  saveInstallerDrafts();
+  updateCartCount();
+}
+
+function createInstallerDraftId() {
+  return `installer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function managerDisplayName(managerId) {
+  const managers = [...state.managerOptions, ...defaultManagers];
+  return managers.find((manager) => manager.id === managerId)?.name || "Менеджер не выбран";
+}
+
 function installerSketchTabsTemplate() {
   ensureInstallerSketches();
   return `
@@ -1690,6 +1892,9 @@ function bindCartControls() {
   document.querySelectorAll("[data-qty-input]").forEach((input) => {
     input.addEventListener("change", () => setQty(input.dataset.qtyInput, input.value));
     input.addEventListener("blur", () => setQty(input.dataset.qtyInput, input.value));
+  });
+  document.querySelectorAll("[data-remove-installer-draft]").forEach((button) => {
+    button.addEventListener("click", () => removeInstallerDraft(button.dataset.removeInstallerDraft));
   });
 }
 
@@ -2628,6 +2833,7 @@ async function submitInstallerRequest(event) {
     state.installerPhoto = null;
     resetInstallerSketches();
     state.installerExtras = {};
+    discardActiveInstallerDraft();
     saveLastOrder({ id: data.request?.id });
     navigate(`/success?order=${encodeURIComponent(data.request?.id || "")}`);
   } catch (error) {
@@ -2771,6 +2977,16 @@ function normalizeQty(product, value) {
 function formatQty(value) {
   const number = Number(value || 0);
   return Number.isInteger(number) ? String(number) : String(Math.round(number * 10) / 10).replace(".", ",");
+}
+
+function plural(count, one, few, many) {
+  const value = Math.abs(Number(count || 0));
+  const lastTwo = value % 100;
+  const last = value % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return many;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
 }
 
 function sketchEdges(points) {
@@ -3765,7 +3981,7 @@ function catalogCategories(products) {
 
 function updateCartCount() {
   pruneCart();
-  const count = Object.keys(state.cart).length;
+  const count = Object.keys(state.cart).length + getInstallerDrafts().length;
   if (elements.cartCount) elements.cartCount.textContent = count;
 }
 
@@ -3840,6 +4056,24 @@ function loadCart() {
 
 function saveCart() {
   localStorage.setItem("lr-cart", JSON.stringify(state.cart));
+}
+
+function loadInstallerDrafts() {
+  try {
+    const drafts = JSON.parse(localStorage.getItem("lr-installer-drafts") || "[]");
+    return Array.isArray(drafts) ? drafts : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveInstallerDrafts() {
+  try {
+    localStorage.setItem("lr-installer-drafts", JSON.stringify(getInstallerDrafts()));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function loadLastOrder() {
