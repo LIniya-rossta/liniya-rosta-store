@@ -1,6 +1,12 @@
 const routes = new Set(["/", "/catalog", "/cart", "/checkout", "/success", "/measure", "/installer"]);
 const money = new Intl.NumberFormat("ru-RU");
 const KYRGYZ_TIME_ZONE = "Asia/Bishkek";
+const defaultManagers = [
+  { id: "manager-1", name: "Катерина" },
+  { id: "manager-2", name: "Тая" },
+  { id: "manager-3", name: "Диана" },
+  { id: "manager-4", name: "Татьяна" }
+];
 const SKETCH_WIDTH = 640;
 const SKETCH_HEIGHT = 1040;
 const SKETCH_CENTER_X = SKETCH_WIDTH / 2;
@@ -901,8 +907,9 @@ function materialMeta(product) {
 }
 
 function managerOptionsTemplate() {
-  if (state.managerOptions.length) {
-    return state.managerOptions
+  const managers = state.managerOptions.length ? state.managerOptions : defaultManagers;
+  if (managers.length) {
+    return managers
       .map((manager) => `<option value="${escapeHtml(manager.id)}">${escapeHtml(manager.name)}</option>`)
       .join("");
   }
@@ -915,8 +922,10 @@ async function loadManagers() {
   try {
     const response = await fetch("/api/managers/public");
     const data = await response.json();
-    state.managerOptions = Array.isArray(data.managers) ? data.managers : [];
+    const managers = Array.isArray(data.managers) ? data.managers : [];
+    state.managerOptions = managers.length ? managers : defaultManagers;
   } catch {
+    state.managerOptions = defaultManagers;
     toast("Менеджеры временно не загрузились.");
   } finally {
     state.managersLoading = false;
