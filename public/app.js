@@ -1330,6 +1330,18 @@ function bindInstallerSketch() {
   let dragMoved = false;
   let dragStartSketch = null;
   let suppressNextClick = false;
+  let addPointMode = false;
+
+  const setAddPointMode = (enabled) => {
+    addPointMode = enabled;
+    board.classList.toggle("is-adding-point", addPointMode);
+    const button = document.querySelector("[data-sketch-add-point]");
+    if (button) {
+      button.classList.toggle("is-active", addPointMode);
+      button.textContent = addPointMode ? "Тапните по стороне" : "Добавить точку";
+    }
+    if (addPointMode) toast("Тапните по линии контура, где нужна новая точка.");
+  };
 
   const renderSketch = () => {
     cleanSketchAfterPointChange();
@@ -1348,13 +1360,26 @@ function bindInstallerSketch() {
     }
     const pointNode = event.target.closest("[data-sketch-point]");
     if (pointNode) return;
+    const svg = event.target.closest(".sketch-svg");
+    if (addPointMode) {
+      if (!svg) return;
+      const point = pointerToSketchPoint(svg, event);
+      const edge = nearestSketchEdge(point);
+      if (edge && edge.distance <= 72) {
+        insertPointOnEdge(edge.key, edge.closestPoint);
+        setAddPointMode(false);
+        renderSketch();
+      } else {
+        toast("Нажмите ближе к линии контура.");
+      }
+      return;
+    }
     const edgeNode = event.target.closest("[data-sketch-edge]");
     if (edgeNode) {
       selectSketchEdge(edgeNode.dataset.sketchEdge);
       renderSketch();
       return;
     }
-    const svg = event.target.closest(".sketch-svg");
     if (!svg) return;
     const point = pointerToSketchPoint(svg, event);
     const edge = nearestSketchEdge(point);
@@ -1365,6 +1390,7 @@ function bindInstallerSketch() {
   });
 
   board.addEventListener("pointerdown", (event) => {
+    if (addPointMode) return;
     const pointNode = event.target.closest("[data-sketch-point]");
     const svg = event.target.closest(".sketch-svg");
     if (!pointNode || !svg) return;
@@ -1393,7 +1419,6 @@ function bindInstallerSketch() {
       pushInstallerHistory(dragStartSketch);
       state.installerSketch.shapeType = "custom";
       state.installerSketch.aiDraft = false;
-      applySketchDimensionsToGeometry();
       renderSketch();
     }
     dragIndex = null;
@@ -1402,6 +1427,7 @@ function bindInstallerSketch() {
   });
 
   document.querySelector("[data-sketch-reset]")?.addEventListener("click", () => {
+    setAddPointMode(false);
     pushInstallerHistory();
     state.installerSketch = createDefaultSketch();
     renderSketch();
@@ -1409,6 +1435,7 @@ function bindInstallerSketch() {
 
   document.querySelectorAll("[data-sketch-template]").forEach((button) => {
     button.addEventListener("click", () => {
+      setAddPointMode(false);
       pushInstallerHistory();
       state.installerSketch = button.dataset.sketchTemplate === "lshape" ? createLShapeSketch() : createDefaultSketch();
       renderSketch();
@@ -1416,17 +1443,18 @@ function bindInstallerSketch() {
   });
 
   document.querySelector("[data-sketch-add-point]")?.addEventListener("click", () => {
-    insertPointOnActiveEdge();
-    renderSketch();
+    setAddPointMode(!addPointMode);
   });
 
   document.querySelector("[data-sketch-autofit]")?.addEventListener("click", () => {
+    setAddPointMode(false);
     pushInstallerHistory();
     repairSketchLayout();
     renderSketch();
   });
 
   document.querySelector("[data-sketch-undo]")?.addEventListener("click", () => {
+    setAddPointMode(false);
     if (restoreInstallerHistory()) renderSketch();
   });
 
@@ -1956,7 +1984,7 @@ function insertPointOnActiveEdge() {
   insertPointOnEdge(edge.key);
 }
 
-function insertPointOnEdge(edgeKey) {
+function insertPointOnEdge(edgeKey, explicitPoint) {
   const oldPoints = state.installerSketch.points;
   const oldEdges = sketchEdges(oldPoints);
   const edge = oldEdges.find((item) => item.key === edgeKey);
@@ -1965,22 +1993,36 @@ function insertPointOnEdge(edgeKey) {
     return;
   }
   pushInstallerHistory();
-  const midpoint = clampSketchPoint({ label: "", ...edge.midpoint });
+  const insertRatio = edgePointRatio(edge, explicitPoint || edge.midpoint);
+  const insertPoint = clampSketchPoint({
+    label: "",
+    x: edge.from.x + (edge.to.x - edge.from.x) * insertRatio,
+    y: edge.from.y + (edge.to.y - edge.from.y) * insertRatio
+  });
   const nextPoints = [
     ...oldPoints.slice(0, edge.index + 1),
-    midpoint,
+    insertPoint,
     ...oldPoints.slice(edge.index + 1)
   ];
   relabelSketchPoints(nextPoints);
   const oldDimensions = { ...(state.installerSketch.dimensions || {}) };
   state.installerSketch.points = nextPoints;
-  state.installerSketch.dimensions = remapDimensionsAfterInsert(oldEdges, edge.index, oldDimensions);
+  state.installerSketch.dimensions = remapDimensionsAfterInsert(oldEdges, edge.index, oldDimensions, insertRatio);
   state.installerSketch.diagonals = {};
   state.installerSketch.shapeType = "custom";
   state.installerSketch.aiDraft = false;
   const newEdges = sketchEdges(state.installerSketch.points);
   state.installerSketch.activeEdgeKey = newEdges[edge.index]?.key || newEdges[0]?.key;
   normalizeSketchDimensionState();
+}
+
+function edgePointRatio(edge, point) {
+  const dx = edge.to.x - edge.from.x;
+  const dy = edge.to.y - edge.from.y;
+  const lengthSquared = dx * dx + dy * dy || 1;
+  const rawRatio = ((point.x - edge.from.x) * dx + (point.y - edge.from.y) * dy) / lengthSquared;
+  const minRatio = Math.min(0.42, 34 / Math.max(edge.length, 1));
+  return Math.max(minRatio, Math.min(1 - minRatio, rawRatio));
 }
 
 function insertNotchOnEdge(edgeKey, mode = "in") {
@@ -2172,7 +2214,7 @@ function offsetPointFromEdge(edge, points) {
   return distance(optionA, center) >= distance(optionB, center) ? optionA : optionB;
 }
 
-function remapDimensionsAfterInsert(oldEdges, insertIndex, oldDimensions) {
+function remapDimensionsAfterInsert(oldEdges, insertIndex, oldDimensions, insertRatio = 0.5) {
   const newEdges = sketchEdges(state.installerSketch.points);
   const nextDimensions = {};
   oldEdges.forEach((oldEdge, oldIndex) => {
@@ -2181,8 +2223,9 @@ function remapDimensionsAfterInsert(oldEdges, insertIndex, oldDimensions) {
     if (oldIndex < insertIndex) {
       nextDimensions[newEdges[oldIndex].key] = value;
     } else if (oldIndex === insertIndex) {
-      nextDimensions[newEdges[oldIndex].key] = Math.round((value / 2) * 100) / 100;
-      nextDimensions[newEdges[oldIndex + 1].key] = Math.round((value / 2) * 100) / 100;
+      const firstValue = roundDimension(value * insertRatio);
+      nextDimensions[newEdges[oldIndex].key] = firstValue;
+      nextDimensions[newEdges[oldIndex + 1].key] = roundDimension(value - firstValue);
     } else if (newEdges[oldIndex + 1]) {
       nextDimensions[newEdges[oldIndex + 1].key] = value;
     }
@@ -2192,10 +2235,15 @@ function remapDimensionsAfterInsert(oldEdges, insertIndex, oldDimensions) {
 
 function nearestSketchEdge(point) {
   return sketchEdges(state.installerSketch.points)
-    .map((edge) => ({
-      ...edge,
-      distance: distanceToSegment(point, edge.from, edge.to)
-    }))
+    .map((edge) => {
+      const closest = closestPointOnSegment(point, edge.from, edge.to);
+      return {
+        ...edge,
+        closestPoint: closest.point,
+        ratio: closest.ratio,
+        distance: Math.hypot(point.x - closest.point.x, point.y - closest.point.y)
+      };
+    })
     .sort((a, b) => a.distance - b.distance)[0];
 }
 
@@ -2445,12 +2493,23 @@ function distance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function distanceToSegment(point, from, to) {
+function closestPointOnSegment(point, from, to) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const lengthSquared = dx * dx + dy * dy || 1;
-  const t = Math.max(0, Math.min(1, ((point.x - from.x) * dx + (point.y - from.y) * dy) / lengthSquared));
-  return Math.hypot(point.x - (from.x + t * dx), point.y - (from.y + t * dy));
+  const ratio = Math.max(0, Math.min(1, ((point.x - from.x) * dx + (point.y - from.y) * dy) / lengthSquared));
+  return {
+    ratio,
+    point: {
+      x: from.x + dx * ratio,
+      y: from.y + dy * ratio
+    }
+  };
+}
+
+function distanceToSegment(point, from, to) {
+  const closest = closestPointOnSegment(point, from, to);
+  return Math.hypot(point.x - closest.point.x, point.y - closest.point.y);
 }
 
 function normalizeSketchDimensionState() {
