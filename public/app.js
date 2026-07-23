@@ -374,12 +374,11 @@ function renderInstaller() {
         <section class="checkout-card sketch-card">
           <div class="panel-head">
             <div>
-              <span class="overline">Чертеж</span>
-              <h2>Форма потолка</h2>
+              <span class="overline">Easy-замер</span>
+              <h2>Контур полотна</h2>
             </div>
             <div class="sketch-actions">
-              <button type="button" data-sketch-template="rectangle">Прямой</button>
-              <button type="button" data-sketch-template="lshape">Г-форма</button>
+              <button type="button" data-sketch-template="rectangle">Прямоугольник</button>
               <button type="button" data-sketch-autofit>Выровнять</button>
               <button type="button" data-sketch-reset>Сброс</button>
               <button type="button" data-sketch-undo>Назад</button>
@@ -391,6 +390,9 @@ function renderInstaller() {
           <div class="sketch-meta" id="sketchMeta">
             ${sketchMetaTemplate()}
           </div>
+          <div class="sketch-builder" id="sketchBuilder">
+            ${sketchBuilderTemplate()}
+          </div>
           <div class="sketch-dimensions" id="sketchDimensions">
             ${sketchDimensionsTemplate()}
           </div>
@@ -400,7 +402,7 @@ function renderInstaller() {
             <strong id="installerPhotoLabel">Прикрепить фото</strong>
           </label>
           <div class="photo-preview" id="installerPhotoPreview"></div>
-          <button class="btn btn-soft full" type="button" data-ai-draft>Собрать черновик по фото</button>
+          <button class="btn btn-soft full" type="button" data-ai-draft>Распознать фото в чертеж</button>
         </section>
 
         <form class="checkout-card checkout-form installer-form" id="installerForm">
@@ -806,9 +808,15 @@ function createDefaultSketch() {
       { label: "C", x: 520, y: 330 },
       { label: "D", x: 120, y: 330 }
     ],
-    dimensions: {},
+    dimensions: {
+      "A-B": 3.45,
+      "B-C": 2.9,
+      "C-D": 3.45,
+      "D-A": 2.9
+    },
     diagonals: {},
     holes: [],
+    activeEdgeKey: "A-B",
     shapeType: "rectangle",
     aiDraft: false
   };
@@ -834,6 +842,7 @@ function createLShapeSketch() {
     },
     diagonals: {},
     holes: [],
+    activeEdgeKey: "A-B",
     shapeType: "lshape",
     aiDraft: false
   };
@@ -842,6 +851,7 @@ function createLShapeSketch() {
 function sketchTemplate() {
   const points = state.installerSketch.points;
   const holes = state.installerSketch.holes || [];
+  const activeEdge = resolveSketchEdge();
   const pointString = points.map((point) => `${point.x},${point.y}`).join(" ");
   const edgeLabels = sketchEdges(points).map((edge) => sketchEdgeLabel(edge, state.installerSketch.dimensions[edge.key])).join("");
   const diagonals = sketchDiagonals(points);
@@ -871,6 +881,7 @@ function sketchTemplate() {
       <rect x="1" y="1" width="638" height="418" rx="30"></rect>
       ${points.length >= 3 ? `<polygon points="${pointString}"></polygon>` : ""}
       ${points.length >= 2 ? `<polyline points="${pointString}${points.length >= 3 ? ` ${points[0].x},${points[0].y}` : ""}"></polyline>` : ""}
+      ${activeEdge ? `<line class="sketch-active-edge" x1="${activeEdge.from.x}" y1="${activeEdge.from.y}" x2="${activeEdge.to.x}" y2="${activeEdge.to.y}"></line>` : ""}
       ${diagonalLines}
       ${edgeLabels}
       ${holes.map((hole) => sketchHoleTemplate(hole)).join("")}
@@ -918,6 +929,7 @@ function sketchTextLabel(point, key, value, className) {
 
 function sketchEdgeLabel(edge, value) {
   if (edge.length < 54 && !value) return "";
+  const isActive = edge.key === state.installerSketch.activeEdgeKey;
   const center = sketchCentroid(state.installerSketch.points);
   const dx = edge.to.x - edge.from.x;
   const dy = edge.to.y - edge.from.y;
@@ -932,17 +944,56 @@ function sketchEdgeLabel(edge, value) {
     x: edge.midpoint.x + normal.x * offset,
     y: edge.midpoint.y + normal.y * offset
   });
-  return sketchTextLabel(point, edge.key, value, `sketch-size-label${edge.length < 95 ? " is-compact" : ""}`);
+  const label = value ? `${edge.key}: ${formatQty(value)} м` : edge.key;
+  const width = Math.max(76, label.length * 8 + 20);
+  return `
+    <g class="sketch-size-label${edge.length < 95 ? " is-compact" : ""}${isActive ? " is-active" : ""}" data-sketch-edge="${escapeHtml(edge.key)}">
+      <rect x="${point.x - width / 2}" y="${point.y - 15}" width="${width}" height="30" rx="12"></rect>
+      <text x="${point.x}" y="${point.y + 5}">${escapeHtml(label)}</text>
+    </g>
+  `;
 }
 
 function sketchMetaTemplate() {
-  const stats = sketchStats(state.installerSketch.points);
+  const stats = sketchMeasuredStats(state.installerSketch.points);
   const holesCount = (state.installerSketch.holes || []).length;
   return `
     <span>${state.installerSketch.points.length} точки</span>
     ${holesCount ? `<span>${holesCount} отверстий</span>` : ""}
-    <span>Контур: ${formatQty(stats.perimeter)} усл. м</span>
-    <span>Площадь: ${formatQty(stats.area)} усл. м²</span>
+    <span>Контур: ${formatQty(stats.perimeter)} м</span>
+    <span>Площадь: ${formatQty(stats.area)} м²</span>
+  `;
+}
+
+function sketchBuilderTemplate() {
+  const edges = sketchEdges(state.installerSketch.points);
+  const activeEdge = resolveSketchEdge(edges);
+  return `
+    <div class="builder-side-strip" role="list" aria-label="Стороны контура">
+      ${edges.map((edge) => {
+        const value = state.installerSketch.dimensions[edge.key];
+        const active = activeEdge?.key === edge.key;
+        return `
+          <button class="builder-side${active ? " is-active" : ""}" type="button" data-select-edge="${escapeHtml(edge.key)}">
+            <strong>${escapeHtml(edge.key)}</strong>
+            <span>${value ? `${formatQty(value)} м` : "размер"}</span>
+          </button>
+        `;
+      }).join("")}
+    </div>
+    <div class="builder-action-panel">
+      <div>
+        <span class="overline">Сторона</span>
+        <strong>${escapeHtml(activeEdge?.key || "A-B")}</strong>
+      </div>
+      <div class="builder-action-row">
+        <button type="button" data-add-notch="in">+ уступ внутрь</button>
+        <button type="button" data-add-notch="out">+ выступ наружу</button>
+        <button type="button" data-add-hole="pipe">+ труба</button>
+        <button type="button" data-add-hole="lamp">+ люстра</button>
+        <button type="button" data-add-hole="spot">+ точка</button>
+      </div>
+    </div>
   `;
 }
 
@@ -952,7 +1003,7 @@ function sketchDimensionsTemplate() {
   const diagonals = sketchDiagonals(points).slice(0, 8);
   return `
     <div class="dimension-group">
-      <strong>Точные стороны</strong>
+      <strong>Размеры по контуру</strong>
       <div class="dimension-grid">
         ${edges.map((edge) => dimensionInput(edge, "dimension")).join("")}
       </div>
@@ -969,8 +1020,9 @@ function sketchDimensionsTemplate() {
 function dimensionInput(item, type) {
   const store = type === "diagonal" ? state.installerSketch.diagonals : state.installerSketch.dimensions;
   const value = store[item.key] || "";
+  const isActive = type === "dimension" && item.key === state.installerSketch.activeEdgeKey;
   return `
-    <div class="dimension-item">
+    <div class="dimension-item${isActive ? " is-active" : ""}">
       <label>
         <span>${escapeHtml(item.key)}</span>
         <input
@@ -985,7 +1037,7 @@ function dimensionInput(item, type) {
         >
         <small>м</small>
       </label>
-      ${type === "dimension" ? `<button type="button" data-insert-bend="${escapeHtml(item.key)}">изгиб</button>` : ""}
+      ${type === "dimension" ? `<button type="button" data-select-edge="${escapeHtml(item.key)}">сторона</button>` : ""}
     </div>
   `;
 }
@@ -1238,6 +1290,7 @@ function bindInstallerMaterialPicker() {
 function bindInstallerSketch() {
   const board = document.getElementById("sketchBoard");
   const meta = document.getElementById("sketchMeta");
+  const builder = document.getElementById("sketchBuilder");
   const dimensions = document.getElementById("sketchDimensions");
   if (!board) return;
   let dragIndex = null;
@@ -1249,6 +1302,7 @@ function bindInstallerSketch() {
     normalizeSketchDimensionState();
     board.innerHTML = sketchTemplate();
     if (meta) meta.innerHTML = sketchMetaTemplate();
+    if (builder) builder.innerHTML = sketchBuilderTemplate();
     if (dimensions) dimensions.innerHTML = sketchDimensionsTemplate();
     bindSketchDimensionInputs();
   };
@@ -1259,19 +1313,21 @@ function bindInstallerSketch() {
       return;
     }
     const pointNode = event.target.closest("[data-sketch-point]");
-    const labelNode = event.target.closest(".sketch-size-label");
     if (pointNode) return;
-    const svg = event.target.closest(".sketch-svg");
-    if (!svg || state.installerSketch.points.length >= 24) return;
-    const point = pointerToSketchPoint(svg, event);
-    const edge = nearestSketchEdge(point);
-    if (!edge || edge.distance > 90) {
-      toast("Нажмите ближе к стороне или используйте кнопку изгиб.");
+    const edgeNode = event.target.closest("[data-sketch-edge]");
+    if (edgeNode) {
+      selectSketchEdge(edgeNode.dataset.sketchEdge);
+      renderSketch();
       return;
     }
-    insertBendOnEdge(edge.key, labelNode ? undefined : point);
-    state.installerSketch.aiDraft = false;
-    renderSketch();
+    const svg = event.target.closest(".sketch-svg");
+    if (!svg) return;
+    const point = pointerToSketchPoint(svg, event);
+    const edge = nearestSketchEdge(point);
+    if (edge && edge.distance <= 92) {
+      selectSketchEdge(edge.key);
+      renderSketch();
+    }
   });
 
   board.addEventListener("pointerdown", (event) => {
@@ -1299,6 +1355,8 @@ function bindInstallerSketch() {
   board.addEventListener("pointerup", (event) => {
     if (dragIndex !== null && dragMoved) {
       suppressNextClick = true;
+      state.installerSketch.shapeType = "custom";
+      state.installerSketch.aiDraft = false;
       applySketchDimensionsToGeometry();
       renderSketch();
     }
@@ -1324,7 +1382,7 @@ function bindInstallerSketch() {
   });
 
   document.querySelector("[data-sketch-undo]")?.addEventListener("click", () => {
-    if (state.installerSketch.points.length > 0) state.installerSketch.points.pop();
+    if (state.installerSketch.points.length > 4) state.installerSketch.points.pop();
     cleanSketchAfterPointChange();
     renderSketch();
   });
@@ -1353,7 +1411,7 @@ function bindInstallerSketch() {
       setNote(note, error.message, true);
     } finally {
       button.disabled = false;
-      button.textContent = "Собрать черновик по фото";
+      button.textContent = "Распознать фото в чертеж";
     }
   });
 
@@ -1384,12 +1442,13 @@ function applyInstallerAiDraft(draft) {
     aiConfidence: Number(draft.confidence || 0),
     warnings: Array.isArray(draft.warnings) ? draft.warnings : [],
     note: draft.notes || "",
+    activeEdgeKey: "A-B",
     shapeType: normalizeAiShapeType(draft.shapeType, points.length),
     aiDraft: true
   };
 
   normalizeSketchDimensionState();
-  if (state.installerSketch.shapeType !== "custom" || (points.length >= 6 && points.length <= 10)) {
+  if (state.installerSketch.shapeType !== "custom") {
     repairSketchLayout();
     return;
   }
@@ -1398,38 +1457,56 @@ function applyInstallerAiDraft(draft) {
 }
 
 function bindSketchDimensionInputs() {
+  const rerenderSketchSurface = () => {
+    const board = document.getElementById("sketchBoard");
+    const meta = document.getElementById("sketchMeta");
+    const builder = document.getElementById("sketchBuilder");
+    const dimensions = document.getElementById("sketchDimensions");
+    if (board) board.innerHTML = sketchTemplate();
+    if (meta) meta.innerHTML = sketchMetaTemplate();
+    if (builder) builder.innerHTML = sketchBuilderTemplate();
+    if (dimensions) dimensions.innerHTML = sketchDimensionsTemplate();
+    bindSketchDimensionInputs();
+  };
+
   document.querySelectorAll("[data-sketch-dimension]").forEach((input) => {
-    input.addEventListener("input", () => {
+    input.addEventListener("change", () => {
       const value = parseDimension(input.value);
       if (value) state.installerSketch.dimensions[input.dataset.sketchDimension] = value;
       else delete state.installerSketch.dimensions[input.dataset.sketchDimension];
       applySketchDimensionsToGeometry();
-      document.getElementById("sketchBoard").innerHTML = sketchTemplate();
-      document.getElementById("sketchMeta").innerHTML = sketchMetaTemplate();
+      rerenderSketchSurface();
     });
   });
 
   document.querySelectorAll("[data-sketch-diagonal]").forEach((input) => {
-    input.addEventListener("input", () => {
+    input.addEventListener("change", () => {
       const value = parseDimension(input.value);
       if (value) state.installerSketch.diagonals[input.dataset.sketchDiagonal] = value;
       else delete state.installerSketch.diagonals[input.dataset.sketchDiagonal];
       applySketchDimensionsToGeometry();
-      document.getElementById("sketchBoard").innerHTML = sketchTemplate();
-      document.getElementById("sketchMeta").innerHTML = sketchMetaTemplate();
+      rerenderSketchSurface();
     });
   });
 
-  document.querySelectorAll("[data-insert-bend]").forEach((button) => {
+  document.querySelectorAll("[data-select-edge]").forEach((button) => {
     button.addEventListener("click", () => {
-      insertBendOnEdge(button.dataset.insertBend);
-      const board = document.getElementById("sketchBoard");
-      const meta = document.getElementById("sketchMeta");
-      const dimensions = document.getElementById("sketchDimensions");
-      if (board) board.innerHTML = sketchTemplate();
-      if (meta) meta.innerHTML = sketchMetaTemplate();
-      if (dimensions) dimensions.innerHTML = sketchDimensionsTemplate();
-      bindSketchDimensionInputs();
+      selectSketchEdge(button.dataset.selectEdge);
+      rerenderSketchSurface();
+    });
+  });
+
+  document.querySelectorAll("[data-add-notch]").forEach((button) => {
+    button.addEventListener("click", () => {
+      insertNotchOnActiveEdge(button.dataset.addNotch);
+      rerenderSketchSurface();
+    });
+  });
+
+  document.querySelectorAll("[data-add-hole]").forEach((button) => {
+    button.addEventListener("click", () => {
+      addSketchHole(button.dataset.addHole);
+      rerenderSketchSurface();
     });
   });
 }
@@ -1541,6 +1618,9 @@ async function submitInstallerRequest(event) {
   const readyTime = form.get("readyTime");
   const method = form.get("method");
   const materialId = form.get("materialId");
+  const measuredStats = sketchMeasuredStats(state.installerSketch.points);
+  const objectArea = form.get("area") || measuredStats.area;
+  const objectPerimeter = form.get("perimeter") || measuredStats.perimeter;
 
   if (!materialId) return setNote(note, "Выберите материал.", true);
   if (!readyDate || !readyTime) return setNote(note, "Выберите дату и время готовности.", true);
@@ -1561,8 +1641,8 @@ async function submitInstallerRequest(event) {
     materialId,
     object: {
       address: form.get("objectAddress"),
-      area: form.get("area"),
-      perimeter: form.get("perimeter"),
+      area: objectArea,
+      perimeter: objectPerimeter,
       comment: form.get("comment")
     },
     fulfillment: {
@@ -1577,8 +1657,8 @@ async function submitInstallerRequest(event) {
       dimensions: state.installerSketch.dimensions,
       diagonals: state.installerSketch.diagonals,
       holes: state.installerSketch.holes || [],
-      area: form.get("area"),
-      perimeter: form.get("perimeter"),
+      area: objectArea,
+      perimeter: objectPerimeter,
       aiConfidence: state.installerSketch.aiConfidence || 0,
       warnings: state.installerSketch.warnings || [],
       aiDraft: state.installerSketch.aiDraft,
@@ -1758,6 +1838,7 @@ function sketchEdges(points) {
         x: Math.round((point.x + next.x) / 2),
         y: Math.round((point.y + next.y) / 2)
       },
+      length: Math.hypot(next.x - point.x, next.y - point.y),
       estimated: Math.round((Math.hypot(next.x - point.x, next.y - point.y) / 20) * 100) / 100
     };
   });
@@ -1789,7 +1870,110 @@ function sketchDiagonals(points) {
   return diagonals;
 }
 
+function resolveSketchEdge(edges = sketchEdges(state.installerSketch.points)) {
+  if (!edges.length) return null;
+  const active = edges.find((edge) => edge.key === state.installerSketch.activeEdgeKey);
+  if (active) return active;
+  state.installerSketch.activeEdgeKey = edges[0].key;
+  return edges[0];
+}
+
+function selectSketchEdge(edgeKey) {
+  const edge = sketchEdges(state.installerSketch.points).find((item) => item.key === edgeKey);
+  if (!edge) return;
+  state.installerSketch.activeEdgeKey = edge.key;
+}
+
+function insertNotchOnActiveEdge(mode) {
+  const edge = resolveSketchEdge();
+  if (!edge) return;
+  insertNotchOnEdge(edge.key, mode);
+}
+
+function insertNotchOnEdge(edgeKey, mode = "in") {
+  const oldPoints = state.installerSketch.points;
+  const oldEdges = sketchEdges(oldPoints);
+  const edge = oldEdges.find((item) => item.key === edgeKey);
+  if (!edge || oldPoints.length >= 20) {
+    toast("Для этого чертежа уже достаточно точек.");
+    return;
+  }
+
+  const dx = edge.to.x - edge.from.x;
+  const dy = edge.to.y - edge.from.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 120) {
+    toast("Сторона короткая. Выберите более длинную сторону.");
+    return;
+  }
+
+  const unit = { x: dx / length, y: dy / length };
+  let normal = { x: -unit.y, y: unit.x };
+  const center = sketchCentroid(oldPoints);
+  const midpointToCenter = { x: center.x - edge.midpoint.x, y: center.y - edge.midpoint.y };
+  if (normal.x * midpointToCenter.x + normal.y * midpointToCenter.y < 0) {
+    normal = { x: -normal.x, y: -normal.y };
+  }
+  if (mode === "out") normal = { x: -normal.x, y: -normal.y };
+
+  const notchWidthPx = Math.max(58, Math.min(length * 0.42, length - 72));
+  const sidePx = Math.max(28, (length - notchWidthPx) / 2);
+  const depthPx = Math.max(42, Math.min(96, length * 0.18));
+  const startDistance = sidePx;
+  const endDistance = Math.min(length - 28, sidePx + notchWidthPx);
+
+  const start = {
+    label: "",
+    x: edge.from.x + unit.x * startDistance,
+    y: edge.from.y + unit.y * startDistance
+  };
+  const end = {
+    label: "",
+    x: edge.from.x + unit.x * endDistance,
+    y: edge.from.y + unit.y * endDistance
+  };
+  const innerStart = {
+    label: "",
+    x: start.x + normal.x * depthPx,
+    y: start.y + normal.y * depthPx
+  };
+  const innerEnd = {
+    label: "",
+    x: end.x + normal.x * depthPx,
+    y: end.y + normal.y * depthPx
+  };
+
+  const nextPoints = [
+    ...oldPoints.slice(0, edge.index + 1),
+    clampSketchPoint(start),
+    clampSketchPoint(innerStart),
+    clampSketchPoint(innerEnd),
+    clampSketchPoint(end),
+    ...oldPoints.slice(edge.index + 1)
+  ];
+  relabelSketchPoints(nextPoints);
+
+  const oldDimensions = { ...(state.installerSketch.dimensions || {}) };
+  state.installerSketch.points = fitSketchPoints(nextPoints);
+  relabelSketchPoints(state.installerSketch.points);
+  state.installerSketch.dimensions = remapDimensionsAfterNotch(oldEdges, edge.index, oldDimensions, {
+    sideRatio: sidePx / length,
+    notchRatio: (endDistance - startDistance) / length,
+    depthMeters: Math.max(0.25, Math.min(0.9, (oldDimensions[edge.key] || edge.estimated || 2.5) * 0.18))
+  });
+  state.installerSketch.diagonals = {};
+  state.installerSketch.shapeType = "custom";
+  state.installerSketch.aiDraft = false;
+  const newEdges = sketchEdges(state.installerSketch.points);
+  state.installerSketch.activeEdgeKey = newEdges[edge.index + 2]?.key || newEdges[edge.index]?.key || newEdges[0]?.key;
+  normalizeSketchDimensionState();
+}
+
 function insertBendOnEdge(edgeKey, explicitPoint) {
+  if (!explicitPoint) {
+    insertNotchOnEdge(edgeKey, "in");
+    return;
+  }
   const oldPoints = state.installerSketch.points;
   const oldEdges = sketchEdges(oldPoints);
   const edge = oldEdges.find((item) => item.key === edgeKey);
@@ -1809,6 +1993,70 @@ function insertBendOnEdge(edgeKey, explicitPoint) {
   state.installerSketch.shapeType = "custom";
   state.installerSketch.aiDraft = false;
   applySketchDimensionsToGeometry();
+}
+
+function remapDimensionsAfterNotch(oldEdges, insertIndex, oldDimensions, split) {
+  const newEdges = sketchEdges(state.installerSketch.points);
+  const nextDimensions = {};
+  oldEdges.forEach((oldEdge, oldIndex) => {
+    const value = Number(oldDimensions[oldEdge.key] || oldEdge.estimated || 0);
+    if (!value) return;
+    if (oldIndex < insertIndex) {
+      nextDimensions[newEdges[oldIndex].key] = roundDimension(value);
+    } else if (oldIndex === insertIndex) {
+      const side = roundDimension(value * split.sideRatio);
+      const notch = roundDimension(value * split.notchRatio);
+      const after = Math.max(0.01, roundDimension(value - side - notch));
+      nextDimensions[newEdges[oldIndex].key] = side;
+      nextDimensions[newEdges[oldIndex + 1].key] = roundDimension(split.depthMeters);
+      nextDimensions[newEdges[oldIndex + 2].key] = notch;
+      nextDimensions[newEdges[oldIndex + 3].key] = roundDimension(split.depthMeters);
+      nextDimensions[newEdges[oldIndex + 4].key] = after;
+    } else if (newEdges[oldIndex + 4]) {
+      nextDimensions[newEdges[oldIndex + 4].key] = roundDimension(value);
+    }
+  });
+  return nextDimensions;
+}
+
+function addSketchHole(type) {
+  const holes = state.installerSketch.holes || [];
+  const edge = resolveSketchEdge();
+  const point = defaultHolePoint(type, edge, holes.length);
+  holes.push({
+    type: ["pipe", "lamp", "spot"].includes(type) ? type : "other",
+    label: holeTypeLabel(type),
+    x: point.x,
+    y: point.y,
+    diameterCm: type === "lamp" ? 30 : type === "pipe" ? 8 : 6
+  });
+  state.installerSketch.holes = holes;
+  state.installerSketch.aiDraft = false;
+}
+
+function defaultHolePoint(type, edge, index) {
+  if (type === "lamp") {
+    const center = sketchCentroid(state.installerSketch.points);
+    return clampSketchPoint({ x: center.x, y: center.y });
+  }
+  if (edge) {
+    const center = sketchCentroid(state.installerSketch.points);
+    const dx = edge.to.x - edge.from.x;
+    const dy = edge.to.y - edge.from.y;
+    const length = Math.hypot(dx, dy) || 1;
+    let normal = { x: -dy / length, y: dx / length };
+    const midpointToCenter = { x: center.x - edge.midpoint.x, y: center.y - edge.midpoint.y };
+    if (normal.x * midpointToCenter.x + normal.y * midpointToCenter.y < 0) {
+      normal = { x: -normal.x, y: -normal.y };
+    }
+    const shift = 44 + (index % 3) * 24;
+    return clampSketchPoint({
+      x: edge.midpoint.x + normal.x * shift,
+      y: edge.midpoint.y + normal.y * shift
+    });
+  }
+  const center = sketchCentroid(state.installerSketch.points);
+  return clampSketchPoint({ x: center.x + (index % 3) * 26, y: center.y + Math.floor(index / 3) * 26 });
 }
 
 function offsetPointFromEdge(edge, points) {
@@ -1859,7 +2107,7 @@ function nearestSketchEdge(point) {
 function repairSketchLayout() {
   cleanSketchAfterPointChange();
   const count = state.installerSketch.points.length;
-  if (state.installerSketch.shapeType === "lshape" || (count >= 6 && count <= 10)) {
+  if (state.installerSketch.shapeType === "lshape") {
     return repairLShapeLayout();
   }
   if (state.installerSketch.shapeType === "rectangle" || count === 4) {
@@ -1977,8 +2225,7 @@ function useStructuredLayoutForDimensions() {
   const count = state.installerSketch.points.length;
   return state.installerSketch.shapeType === "rectangle"
     || state.installerSketch.shapeType === "lshape"
-    || count === 4
-    || (count >= 6 && count <= 10);
+    || count === 4;
 }
 
 function applySketchDimensionsToGeometry() {
@@ -2111,13 +2358,17 @@ function distanceToSegment(point, from, to) {
 function normalizeSketchDimensionState() {
   state.installerSketch.dimensions = state.installerSketch.dimensions || {};
   state.installerSketch.diagonals = state.installerSketch.diagonals || {};
-  const edgeKeys = new Set(sketchEdges(state.installerSketch.points).map((edge) => edge.key));
+  const edges = sketchEdges(state.installerSketch.points);
+  const edgeKeys = new Set(edges.map((edge) => edge.key));
   const diagonalKeys = new Set(sketchDiagonals(state.installerSketch.points).map((diagonal) => diagonal.key));
   for (const key of Object.keys(state.installerSketch.dimensions)) {
     if (!edgeKeys.has(key)) delete state.installerSketch.dimensions[key];
   }
   for (const key of Object.keys(state.installerSketch.diagonals)) {
     if (!diagonalKeys.has(key)) delete state.installerSketch.diagonals[key];
+  }
+  if (!edgeKeys.has(state.installerSketch.activeEdgeKey)) {
+    state.installerSketch.activeEdgeKey = edges[0]?.key || "A-B";
   }
 }
 
@@ -2153,6 +2404,63 @@ function sketchStats(points) {
     area: Math.round(area * 10) / 10,
     perimeter: Math.round(perimeter * 10) / 10
   };
+}
+
+function sketchMeasuredStats(points) {
+  if (!Array.isArray(points) || points.length < 2) return { area: 0, perimeter: 0 };
+  const edges = sketchEdges(points);
+  const dimensions = state.installerSketch.dimensions || {};
+  const ratios = edges
+    .map((edge) => {
+      const value = Number(dimensions[edge.key] || 0);
+      return value > 0 ? edge.length / value : 0;
+    })
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+  const scale = ratios.length ? ratios[Math.floor(ratios.length / 2)] : 20;
+  const perimeter = edges.reduce((sum, edge) => {
+    const value = Number(dimensions[edge.key] || 0);
+    return sum + (value > 0 ? value : edge.length / scale);
+  }, 0);
+  const metricPoints = sketchMetricPoints(edges, dimensions, scale);
+  const area = metricPoints.length >= 3
+    ? polygonArea(metricPoints)
+    : polygonArea(points) / (scale * scale);
+  return {
+    area: Math.round(area * 10) / 10,
+    perimeter: Math.round(perimeter * 10) / 10
+  };
+}
+
+function sketchMetricPoints(edges, dimensions, fallbackScale) {
+  if (!edges.length) return [];
+  const metricPoints = [{ x: 0, y: 0 }];
+  for (let index = 0; index < edges.length - 1; index += 1) {
+    const edge = edges[index];
+    const previous = metricPoints[metricPoints.length - 1];
+    const length = Number(dimensions[edge.key] || 0) || edge.length / fallbackScale;
+    const direction = dominantMetricDirection(edge);
+    metricPoints.push({
+      x: previous.x + direction.x * length,
+      y: previous.y + direction.y * length
+    });
+  }
+  return metricPoints;
+}
+
+function dominantMetricDirection(edge) {
+  const dx = edge.to.x - edge.from.x;
+  const dy = edge.to.y - edge.from.y;
+  if (Math.abs(dx) >= Math.abs(dy)) return { x: dx >= 0 ? 1 : -1, y: 0 };
+  return { x: 0, y: dy >= 0 ? 1 : -1 };
+}
+
+function polygonArea(points) {
+  if (!Array.isArray(points) || points.length < 3) return 0;
+  return Math.abs(points.reduce((sum, point, index) => {
+    const next = points[(index + 1) % points.length];
+    return sum + point.x * next.y - next.x * point.y;
+  }, 0)) / 2;
 }
 
 function inputQtyValue(value) {
