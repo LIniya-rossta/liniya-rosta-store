@@ -888,9 +888,12 @@ function installerSketchSvg(request) {
   const dimensions = request.sketch.dimensions || {};
   const diagonals = request.sketch.diagonals || {};
   const holes = request.sketch.holes || [];
-  const pointString = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const edges = installerSketchEdges(points);
-  const diagonalItems = installerSketchDiagonals(points).filter((diagonal) => diagonals[diagonal.key]);
+  const rendered = normalizeInstallerSvgSketch(points, holes);
+  const renderPoints = rendered.points;
+  const renderHoles = rendered.holes;
+  const pointString = renderPoints.map((point) => `${point.x},${point.y}`).join(" ");
+  const edges = installerSketchEdges(renderPoints);
+  const diagonalItems = installerSketchDiagonals(renderPoints).filter((diagonal) => diagonals[diagonal.key]);
   const dimensionRows = [
     ...edges.map((edge) => `${edge.key}: ${formatQty(dimensions[edge.key])} м`),
     ...diagonalItems.map((diagonal) => `${diagonal.key}: ${formatQty(diagonals[diagonal.key])} м`),
@@ -905,34 +908,80 @@ function installerSketchSvg(request) {
       <stop offset="1" stop-color="#f3dca8"/>
     </linearGradient>
     <pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse">
-      <path d="M 34 0 L 0 0 0 34" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+      <path d="M 34 0 L 0 0 0 34" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1"/>
     </pattern>
   </defs>
   <rect width="1280" height="900" fill="#07111a"/>
-  <rect x="38" y="38" width="1204" height="824" rx="42" fill="#101b25" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
+  <rect x="38" y="38" width="1204" height="824" rx="42" fill="#101b25" stroke="#ffffff" stroke-opacity="0.18" stroke-width="2"/>
   <text x="76" y="104" fill="#f3dca8" font-family="Arial, sans-serif" font-size="28" font-weight="800">${escapeXml(request.id)}</text>
   <text x="76" y="154" fill="#f6fbff" font-family="Arial, sans-serif" font-size="42" font-weight="900">${escapeXml(request.sketch?.title || request.material?.title || "Чертеж полотна")}</text>
   <text x="76" y="202" fill="#91a4b3" font-family="Arial, sans-serif" font-size="24">${escapeXml(request.installer?.name || "")} · ${escapeXml(request.installer?.phone || "")}</text>
   <g transform="translate(70 265) scale(1.55)">
-    <rect x="0" y="0" width="640" height="420" rx="28" fill="url(#grid)" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
-    ${points.length >= 3 ? `<polygon points="${pointString}" fill="rgba(99,230,255,0.1)" stroke="none"/>` : ""}
-    ${diagonalItems.map((diagonal) => `<line x1="${diagonal.from.x}" y1="${diagonal.from.y}" x2="${diagonal.to.x}" y2="${diagonal.to.y}" stroke="rgba(243,220,168,0.48)" stroke-width="2" stroke-dasharray="10 8"/>`).join("")}
-    ${points.length >= 2 ? `<polyline points="${pointString}${points.length >= 3 ? ` ${points[0].x},${points[0].y}` : ""}" fill="none" stroke="url(#line)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>` : ""}
+    <rect x="0" y="0" width="640" height="420" rx="28" fill="url(#grid)" stroke="#ffffff" stroke-opacity="0.12" stroke-width="2"/>
+    ${renderPoints.length >= 3 ? `<polygon points="${pointString}" fill="#63e6ff" fill-opacity="0.11" stroke="none"/>` : ""}
+    ${diagonalItems.map((diagonal) => `<line x1="${diagonal.from.x}" y1="${diagonal.from.y}" x2="${diagonal.to.x}" y2="${diagonal.to.y}" stroke="#f3dca8" stroke-opacity="0.48" stroke-width="2" stroke-dasharray="10 8"/>`).join("")}
+    ${renderPoints.length >= 2 ? `<polyline points="${pointString}${renderPoints.length >= 3 ? ` ${renderPoints[0].x},${renderPoints[0].y}` : ""}" fill="none" stroke="url(#line)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>` : ""}
     ${edges.map((edge) => svgDimensionLabel(edge.midpoint, `${edge.key}: ${formatQty(dimensions[edge.key])} м`)).join("")}
     ${diagonalItems.map((diagonal) => svgDimensionLabel(diagonal.midpoint, `${diagonal.key}: ${formatQty(diagonals[diagonal.key])} м`, true)).join("")}
-    ${holes.map((hole) => svgHoleMarker(hole)).join("")}
-    ${points.map((point) => `
+    ${renderHoles.map((hole) => svgHoleMarker(hole)).join("")}
+    ${renderPoints.map((point) => `
       <circle cx="${point.x}" cy="${point.y}" r="14" fill="#07111a" stroke="#f3dca8" stroke-width="4"/>
       <text x="${point.x}" y="${point.y + 5}" fill="#ffffff" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="900">${escapeXml(point.label)}</text>
     `).join("")}
   </g>
-  <g transform="translate(1110 280)">
-    <text x="0" y="0" fill="#f3dca8" font-family="Arial, sans-serif" font-size="20" font-weight="900" text-anchor="end">РАЗМЕРЫ</text>
-    ${dimensionRows.slice(0, 18).map((line, index) => `<text x="0" y="${42 + index * 30}" fill="#d6e3ec" font-family="Arial, sans-serif" font-size="22" text-anchor="end">${escapeXml(line)}</text>`).join("")}
+  <g transform="translate(1084 280)">
+    <rect x="-18" y="-32" width="156" height="${Math.min(18, dimensionRows.length) * 28 + 56}" rx="18" fill="#07111a" fill-opacity="0.72" stroke="#ffffff" stroke-opacity="0.12" stroke-width="1"/>
+    <text x="0" y="0" fill="#f3dca8" font-family="Arial, sans-serif" font-size="20" font-weight="900">РАЗМЕРЫ</text>
+    ${dimensionRows.slice(0, 18).map((line, index) => `<text x="0" y="${38 + index * 28}" fill="#d6e3ec" font-family="Arial, sans-serif" font-size="19">${escapeXml(line)}</text>`).join("")}
   </g>
   <text x="76" y="820" fill="#91a4b3" font-family="Arial, sans-serif" font-size="22">${escapeXml(request.object?.address || "")}</text>
   <text x="76" y="852" fill="#91a4b3" font-family="Arial, sans-serif" font-size="18">Линия Роста · чертеж от монтажника · ${escapeXml(formatKyrgyzDateTime(request.createdAt))} Кыргызстан</text>
 </svg>`;
+}
+
+function normalizeInstallerSvgSketch(points = [], holes = []) {
+  const width = 640;
+  const height = 420;
+  const padding = 56;
+  const safePoints = Array.isArray(points)
+    ? points
+        .filter((point) => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)))
+        .map((point, index) => ({
+          ...point,
+          label: trimText(point.label, 8) || String.fromCharCode(65 + index),
+          x: Number(point.x),
+          y: Number(point.y)
+        }))
+    : [];
+  const safeHoles = Array.isArray(holes)
+    ? holes
+        .filter((hole) => Number.isFinite(Number(hole.x)) && Number.isFinite(Number(hole.y)))
+        .map((hole) => ({ ...hole, x: Number(hole.x), y: Number(hole.y) }))
+    : [];
+  const items = [...safePoints, ...safeHoles];
+  if (!items.length) return { points: safePoints, holes: safeHoles };
+
+  const bounds = items.reduce((acc, item) => ({
+    minX: Math.min(acc.minX, item.x),
+    maxX: Math.max(acc.maxX, item.x),
+    minY: Math.min(acc.minY, item.y),
+    maxY: Math.max(acc.maxY, item.y)
+  }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
+  const sourceWidth = Math.max(1, bounds.maxX - bounds.minX);
+  const sourceHeight = Math.max(1, bounds.maxY - bounds.minY);
+  const scale = Math.min((width - padding * 2) / sourceWidth, (height - padding * 2) / sourceHeight);
+  const offsetX = (width - sourceWidth * scale) / 2 - bounds.minX * scale;
+  const offsetY = (height - sourceHeight * scale) / 2 - bounds.minY * scale;
+  const mapPoint = (item) => ({
+    ...item,
+    x: Math.round((item.x * scale + offsetX) * 10) / 10,
+    y: Math.round((item.y * scale + offsetY) * 10) / 10
+  });
+
+  return {
+    points: safePoints.map(mapPoint),
+    holes: safeHoles.map(mapPoint)
+  };
 }
 
 function svgHoleMarker(hole) {
@@ -941,7 +990,7 @@ function svgHoleMarker(hole) {
   const label = holeLabel(hole);
   return `
     <g>
-      <circle cx="${hole.x}" cy="${hole.y}" r="${radius}" fill="rgba(7,17,26,0.82)" stroke="${stroke}" stroke-width="4"/>
+      <circle cx="${hole.x}" cy="${hole.y}" r="${radius}" fill="#07111a" fill-opacity="0.82" stroke="${stroke}" stroke-width="4"/>
       <text x="${hole.x}" y="${hole.y + radius + 18}" fill="#ffffff" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="900">${escapeXml(label)}</text>
     </g>
   `;
@@ -959,9 +1008,11 @@ function holeLabel(hole) {
 
 function svgDimensionLabel(point, label, diagonal = false) {
   const width = Math.max(86, String(label).length * 8);
+  const fill = diagonal ? "#d9ad68" : "#080e16";
+  const fillOpacity = diagonal ? "0.86" : "0.88";
   return `
     <g>
-      <rect x="${point.x - width / 2}" y="${point.y - 17}" width="${width}" height="34" rx="13" fill="${diagonal ? "rgba(217,173,104,0.86)" : "rgba(8,14,22,0.88)"}" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+      <rect x="${point.x - width / 2}" y="${point.y - 17}" width="${width}" height="34" rx="13" fill="${fill}" fill-opacity="${fillOpacity}" stroke="#ffffff" stroke-opacity="0.18" stroke-width="1"/>
       <text x="${point.x}" y="${point.y + 6}" fill="${diagonal ? "#07111a" : "#ffffff"}" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="900">${escapeXml(label)}</text>
     </g>
   `;
