@@ -42,7 +42,8 @@ const MAX_JSON_BODY_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_JSON_BO
 const COMPANY_WHATSAPP = process.env.COMPANY_WHATSAPP || "996990883883";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_INSTALLER_AI_MODEL = process.env.OPENAI_INSTALLER_AI_MODEL || "gpt-5.6";
-const GITHUB_CATALOG_SYNC_TOKEN = process.env.GITHUB_CATALOG_SYNC_TOKEN || "";
+const GITHUB_CATALOG_SYNC_TOKEN =
+  process.env.GITHUB_CATALOG_SYNC_TOKEN || process.env.CATALOG_GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || "";
 const GITHUB_CATALOG_SYNC_REPO = process.env.GITHUB_CATALOG_SYNC_REPO || "LIniya-rossta/liniya-rosta-store";
 const GITHUB_CATALOG_SYNC_BRANCH = process.env.GITHUB_CATALOG_SYNC_BRANCH || "main";
 const GITHUB_CATALOG_SYNC_ENABLED = process.env.GITHUB_CATALOG_SYNC_ENABLED !== "false" && Boolean(GITHUB_CATALOG_SYNC_TOKEN);
@@ -428,7 +429,9 @@ function githubHeaders() {
 }
 
 function catalogBackupNote(result) {
-  if (!result?.enabled) return "\nGitHub-бэкап: не включен. На бесплатном Render товар может пропасть после перезапуска.";
+  if (!result?.enabled) {
+    return "\nGitHub-бэкап: не включен. Изменение сработает сейчас, но на бесплатном Render может откатиться после перезапуска. Добавьте GITHUB_CATALOG_SYNC_TOKEN в Render Environment.";
+  }
   if (result.ok) return "\nGitHub-бэкап: сохранен.";
   return `\nGitHub-бэкап: ошибка - ${result.message || "проверьте токен"}.`;
 }
@@ -2111,7 +2114,11 @@ async function toggleProductVisibility(chatId, fromId, productId) {
   product.active = product.active === false;
   product.updatedAt = new Date().toISOString();
   const backup = await persistProducts(products, { message: `Toggle product ${product.id}` });
-  if (backup.enabled && !backup.ok) await sendMessage(chatId, catalogBackupNote(backup), adminKeyboard());
+  await sendMessage(
+    chatId,
+    `${product.active === false ? "Товар скрыт с сайта" : "Товар снова показан на сайте"}: ${product.title}${catalogBackupNote(backup)}`,
+    adminKeyboard()
+  );
   return openProductEditor(chatId, fromId, product.id);
 }
 
