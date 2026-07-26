@@ -552,7 +552,7 @@ async function createInstallerRequest(payload) {
   const product = activeProducts.get(trimText(payload.materialId, 160));
   if (!product) throw publicError(400, "Выберите материал из каталога");
   if (!isInstallerFilmMaterial(product)) {
-    throw publicError(400, "В пространстве монтажника можно выбрать только пленку или полотно");
+    throw publicError(400, "Для расчета потолка можно выбрать только пленку или полотно");
   }
   const extraItems = cleanInstallerExtraItems(payload.extraItems, activeProducts);
 
@@ -1058,7 +1058,7 @@ function installerSketchSvg(request) {
     ${dimensionRows.slice(0, 18).map((line, index) => `<text x="0" y="${38 + index * 28}" fill="#d6e3ec" font-family="Arial, sans-serif" font-size="19">${escapeXml(line)}</text>`).join("")}
   </g>
   <text x="76" y="820" fill="#91a4b3" font-family="Arial, sans-serif" font-size="22">${escapeXml(request.object?.address || "")}</text>
-  <text x="76" y="852" fill="#91a4b3" font-family="Arial, sans-serif" font-size="18">Линия Роста · чертеж от монтажника · ${escapeXml(formatKyrgyzDateTime(request.createdAt))} Кыргызстан</text>
+  <text x="76" y="852" fill="#91a4b3" font-family="Arial, sans-serif" font-size="18">Линия Роста · чертеж клиента · ${escapeXml(formatKyrgyzDateTime(request.createdAt))} Кыргызстан</text>
 </svg>`;
 }
 
@@ -1415,7 +1415,7 @@ async function setTelegramCommands() {
       { command: "manager", description: "Войти как менеджер" },
       { command: "watch", description: "Наблюдать за новыми заказами" },
       { command: "orders", description: "Последние заказы" },
-      { command: "installer_requests", description: "Заявки монтажников" },
+      { command: "installer_requests", description: "Заявки на расчет потолка" },
       { command: "week", description: "Сводка за неделю" },
       { command: "cancel", description: "Отменить текущее действие" }
     ]
@@ -1478,7 +1478,7 @@ async function handleTelegramUpdate(update) {
   if (textValue === "/watch_off") return unsubscribeWatcher(chatId);
 
   const managerSession = getManagerSession(fromId);
-  if (textValue === "📐 Заявки монтажников" || textValue === "/installer_requests") {
+  if (textValue === "📐 Заявки на расчет" || textValue === "/installer_requests") {
     if (!managerSession) return startManagerLogin(chatId, fromId);
     return sendInstallerRequests(chatId, managerSession.managerId);
   }
@@ -2237,12 +2237,12 @@ function formatInstallerRequest(request) {
 
   const sections = [
     [
-      `Заявка монтажника: ${request.id}`,
+      `Заявка на расчет потолка: ${request.id}`,
       `Менеджер: ${request.manager?.name || "не выбран"}`,
       `Статус: ${STATUS_LABELS[request.status] || request.status || "Новый"}`
     ],
     [
-      "Монтажник",
+      "Клиент",
       `Имя: ${installer.name || "не указано"}`,
       `Телефон: ${installer.phone || "не указан"}`
     ],
@@ -2382,7 +2382,7 @@ async function notifyInstallerManagers(request) {
     return;
   }
 
-  const message = `Новая заявка монтажника\n${MESSAGE_SEPARATOR}\n${formatInstallerRequest(request)}`;
+  const message = `Новая заявка на расчет потолка\n${MESSAGE_SEPARATOR}\n${formatInstallerRequest(request)}`;
   for (const chatId of chatIds) {
     await sendMessage(chatId, message);
     await sendInstallerRequestFiles(chatId, request);
@@ -2437,7 +2437,7 @@ async function sendManagerPanel(chatId, prefix, managerId) {
 
 function managerKeyboard() {
   return {
-    keyboard: [[{ text: "📐 Заявки монтажников" }], [{ text: "🚪 Выйти" }]],
+    keyboard: [[{ text: "📐 Заявки на расчет" }], [{ text: "🚪 Выйти" }]],
     resize_keyboard: true
   };
 }
@@ -2446,7 +2446,7 @@ async function sendInstallerRequests(chatId, managerId) {
   const requests = await readJson(INSTALLER_REQUESTS_FILE, []);
   const ownRequests = requests.filter((request) => request.manager?.id === managerId);
   if (!ownRequests.length) {
-    return sendMessage(chatId, "Заявок монтажников пока нет.", managerKeyboard());
+    return sendMessage(chatId, "Заявок на расчет потолка пока нет.", managerKeyboard());
   }
 
   for (const request of ownRequests.slice(0, 8)) {

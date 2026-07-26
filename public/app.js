@@ -126,8 +126,8 @@ async function init() {
   elements.whatsappHeader.href = whatsAppLink("Здравствуйте! Пишу с сайта Линия Роста.");
   applyTheme(state.theme);
   bindGlobalEvents();
-  await loadProducts();
   renderRoute();
+  if (await loadProducts()) renderRoute();
 }
 
 function bindGlobalEvents() {
@@ -146,13 +146,20 @@ function bindGlobalEvents() {
 }
 
 async function loadProducts() {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 12000);
   try {
-    const response = await fetch("/api/products");
+    const response = await fetch("/api/products", { signal: controller.signal });
+    if (!response.ok) throw new Error(`Catalog request failed: ${response.status}`);
     const data = await response.json();
     state.products = Array.isArray(data.products) ? data.products : [];
     pruneCart();
+    return true;
   } catch {
     toast("Каталог временно не загрузился. Проверьте сервер.");
+    return false;
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 
@@ -200,7 +207,7 @@ function renderHome() {
           <a class="btn btn-primary" href="${whatsAppLink("Здравствуйте! Хочу связаться с Линией Роста.")}" target="_blank" rel="noreferrer">Связаться с нами</a>
           <a class="btn btn-primary" href="/catalog" data-link>Перейти в каталог</a>
           <a class="btn btn-soft" href="/measure" data-link>Заказать замер от 50 м²</a>
-          <a class="btn btn-soft" href="/installer" data-link>Пространство для монтажников</a>
+          <a class="btn btn-soft" href="/installer" data-link>Визуализация и просчет потолка</a>
         </div>
       </div>
 
@@ -274,7 +281,7 @@ function renderCartPage() {
         <div>
           <span class="overline">Корзина</span>
           <h1>Ваш заказ</h1>
-          <p>Проверьте товары и сохраненные заявки мастерской, затем продолжайте оформление.</p>
+          <p>Проверьте товары и сохраненные расчеты потолка, затем продолжайте оформление.</p>
         </div>
         <a class="btn btn-soft" href="/catalog" data-link>Вернуться в каталог</a>
       </div>
@@ -400,9 +407,9 @@ function renderInstaller() {
     <section class="installer-page page-section">
       <div class="shop-title reveal">
         <div>
-          <span class="overline">Монтажникам</span>
-          <h1>Мастерская</h1>
-          <p>Соберите точный замер, выберите полотно и отправьте заявку менеджеру за считанные секунды.</p>
+          <span class="overline">Расчет потолка</span>
+          <h1>Визуализация и просчет потолка</h1>
+          <p>Загрузите готовый чертеж или соберите контур вручную, выберите полотно и отправьте данные на точный расчет.</p>
         </div>
         <a class="btn btn-soft" href="/catalog" data-link>Каталог</a>
       </div>
@@ -447,7 +454,7 @@ function renderInstaller() {
         </section>
 
         <form class="checkout-card checkout-form installer-form" id="installerForm">
-          <label><span>Имя монтажника</span><input name="name" required autocomplete="name" placeholder="Ваше имя" value="${escapeHtml(draftForm.name || "")}"></label>
+          <label><span>Имя клиента</span><input name="name" required autocomplete="name" placeholder="Ваше имя" value="${escapeHtml(draftForm.name || "")}"></label>
           <label><span>Телефон</span><input name="phone" required autocomplete="tel" inputmode="tel" value="${escapeHtml(draftForm.phone || "+996 ")}" placeholder="+996 ..." data-phone-autocode="+996 "></label>
           <label class="full"><span>Адрес объекта</span><input name="objectAddress" required autocomplete="street-address" placeholder="Район, улица, дом" value="${escapeHtml(draftForm.objectAddress || "")}"></label>
           ${materialPickerTemplate(materials, draftForm.materialId)}
@@ -492,8 +499,8 @@ function renderInstaller() {
 
           <label class="full"><span>Комментарий</span><textarea name="comment" rows="4" placeholder="Ниши, трубы, углы, пожелания по доставке">${escapeHtml(draftForm.comment || "")}</textarea></label>
           <div class="installer-form-actions full">
-            <button class="btn btn-soft" type="button" data-save-installer-draft>${state.activeInstallerDraftId ? "Обновить в корзине" : "Добавить заявку в корзину"}</button>
-            <button class="btn btn-primary" type="submit">Отправить менеджеру</button>
+            <button class="btn btn-soft" type="button" data-save-installer-draft>${state.activeInstallerDraftId ? "Обновить расчет в корзине" : "Сохранить расчет в корзине"}</button>
+            <button class="btn btn-primary" type="submit">Отправить на расчет</button>
           </div>
           <p class="form-note full" id="installerNote"></p>
         </form>
@@ -502,7 +509,14 @@ function renderInstaller() {
   `;
 
   if (!state.managersLoaded && !state.managersLoading) loadManagers().then(() => {
-    if (normalizePath(window.location.pathname) === "/installer") renderInstaller();
+    if (normalizePath(window.location.pathname) !== "/installer") return;
+    const select = document.querySelector('#installerForm select[name="managerId"]');
+    if (!select) return;
+    const selectedManagerId = select.value;
+    select.innerHTML = managerOptionsTemplate(selectedManagerId);
+    if (selectedManagerId && [...select.options].some((option) => option.value === selectedManagerId)) {
+      select.value = selectedManagerId;
+    }
   });
   bindPhoneInputs();
   bindReadyControls("installerForm");
@@ -561,6 +575,7 @@ function productCard(product) {
           <strong>${hasPrice ? formatMoney(product.price) : "Цена по запросу"}</strong>
           ${hasPrice ? `<small>/ ${escapeHtml(unit)}</small>` : ""}
         </div>
+        <p class="product-install-note">Цена без учета установки</p>
         <div class="product-cart-control" data-card-control="${escapeHtml(product.id)}">
           ${productCardCartControl(product)}
         </div>
@@ -617,7 +632,7 @@ function cartLayout(lines, installerDrafts = getInstallerDrafts()) {
         ${installerDrafts.length ? installerDraftSummary(installerDrafts) : ""}
         ${lines.length
           ? `<a class="btn btn-primary full" href="/checkout" data-link>Перейти к оформлению</a>`
-          : `<a class="btn btn-primary full" href="/installer" data-link>Открыть мастерскую</a>`}
+          : `<a class="btn btn-primary full" href="/installer" data-link>Открыть расчет потолка</a>`}
       </aside>
     </div>
   `;
@@ -631,10 +646,10 @@ function installerDraftCartItem(draft) {
   return `
     <article class="cart-item installer-draft-item">
       <div class="cart-item-media installer-draft-media">
-        <span>М</span>
+        <span>П</span>
       </div>
       <div class="installer-draft-copy">
-        <span class="overline">Заявка мастерской</span>
+        <span class="overline">Расчет потолка</span>
         <h3>${escapeHtml(draft.form?.objectAddress || "Черновик замера")}</h3>
         <p>${escapeHtml(material?.title || "Полотно не выбрано")} · ${sketchesCount} ${plural(sketchesCount, "чертеж", "чертежа", "чертежей")}</p>
         <div class="installer-draft-meta">
@@ -654,7 +669,7 @@ function installerDraftCartItem(draft) {
 function installerDraftSummary(drafts) {
   return `
     <div class="installer-draft-summary">
-      <span>Черновики мастерской</span>
+      <span>Сохраненные расчеты</span>
       <strong>${drafts.length}</strong>
     </div>
   `;
@@ -684,10 +699,10 @@ function emptyCart() {
     <div class="empty-shop reveal">
       <div class="empty-animation" aria-hidden="true"><span></span><span></span><span></span></div>
       <h2>Корзина пока пустая</h2>
-      <p>Добавьте товары из каталога или сохраните заявку из мастерской, чтобы вернуться к ней позже.</p>
+      <p>Добавьте товары из каталога или сохраните расчет потолка, чтобы вернуться к нему позже.</p>
       <div class="action-row center-actions">
         <a class="btn btn-primary" href="/catalog" data-link>Перейти в каталог</a>
-        <a class="btn btn-soft" href="/installer" data-link>Открыть мастерскую</a>
+        <a class="btn btn-soft" href="/installer" data-link>Рассчитать потолок</a>
       </div>
     </div>
   `;
@@ -841,9 +856,7 @@ function installerExtrasTemplate() {
         <div class="material-tabs" aria-label="Категории доптоваров">
           ${categories.map((category, index) => `<button type="button" data-extra-category="${escapeHtml(category)}" class="${index === 0 ? "is-active" : ""}">${escapeHtml(category)}</button>`).join("")}
         </div>
-        <div class="material-options">
-          ${products.map((product) => installerExtraOptionTemplate(product)).join("")}
-        </div>
+        <div class="material-options" data-extra-options></div>
       </div>
       <div class="extra-selected" id="installerExtraSelected">
         ${installerExtraSelectedTemplate()}
@@ -954,7 +967,7 @@ function materialOptionTemplate(product, selected = false) {
 
 function materialThumb(product) {
   if (product?.image) {
-    return `<span class="material-thumb"><img src="${escapeHtml(product.image)}" alt=""></span>`;
+    return `<span class="material-thumb"><img src="${escapeHtml(product.image)}" alt="" loading="lazy"></span>`;
   }
   const letter = String(product?.category || product?.title || "M").trim().charAt(0).toUpperCase();
   return `<span class="material-thumb is-empty">${escapeHtml(letter)}</span>`;
@@ -1718,14 +1731,14 @@ function saveInstallerDraftToCart() {
   };
 
   let savedDraft = draft;
-  let message = "Заявка сохранена в корзине. Можно вернуться к ней позже.";
+  let message = "Расчет сохранен в корзине. Можно вернуться к нему позже.";
   if (!saveCandidate(draft)) {
     savedDraft = { ...draft, sketchPhoto: null };
-    message = "Заявка сохранена в корзине без фото: файл слишком большой.";
+    message = "Расчет сохранен в корзине без фото: файл слишком большой.";
     if (!saveCandidate(savedDraft)) {
       state.installerDrafts = previousDrafts;
       saveInstallerDrafts();
-      setNote(note, "Не удалось сохранить заявку в корзину. Попробуйте убрать большое фото.", true);
+      setNote(note, "Не удалось сохранить расчет в корзину. Попробуйте убрать большое фото.", true);
       return;
     }
   }
@@ -1736,9 +1749,9 @@ function saveInstallerDraftToCart() {
   updateCartCount();
   setNote(note, message, false);
   document.querySelector("[data-save-installer-draft]")?.replaceChildren(
-    document.createTextNode("Обновить в корзине")
+    document.createTextNode("Обновить расчет в корзине")
   );
-  toast("Заявка мастерской добавлена в корзину.");
+  toast("Расчет потолка сохранен в корзине.");
 }
 
 function removeInstallerDraft(draftId) {
@@ -1750,7 +1763,7 @@ function removeInstallerDraft(draftId) {
   saveInstallerDrafts();
   updateCartCount();
   if (normalizePath(window.location.pathname) === "/cart") renderCartPage();
-  toast("Черновик мастерской удален.");
+  toast("Сохраненный расчет удален.");
 }
 
 function discardActiveInstallerDraft() {
@@ -2090,17 +2103,36 @@ function bindInstallerExtras() {
   const trigger = root?.querySelector("[data-extra-trigger]");
   const panel = root?.querySelector("[data-extra-panel]");
   const search = root?.querySelector("[data-extra-search]");
+  const optionsRoot = root?.querySelector("[data-extra-options]");
   const categoryButtons = [...(root?.querySelectorAll("[data-extra-category]") || [])];
-  const optionButtons = [...(root?.querySelectorAll("[data-extra-option]") || [])];
   if (!root || !trigger || !panel) return;
 
   let activeCategory = "Все";
+  let optionButtons = [];
+  let optionsRendered = false;
   const close = () => {
     root.classList.remove("is-open");
     panel.hidden = true;
     trigger.setAttribute("aria-expanded", "false");
   };
+  const bindOptionButtons = () => {
+    optionButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        addInstallerExtra(button.dataset.extraOption);
+        close();
+      });
+    });
+  };
+  const renderOptions = () => {
+    if (optionsRendered || !optionsRoot) return;
+    const products = getStoreProducts().filter(isInstallerExtraProduct);
+    optionsRoot.innerHTML = products.map((product) => installerExtraOptionTemplate(product)).join("");
+    optionButtons = [...optionsRoot.querySelectorAll("[data-extra-option]")];
+    optionsRendered = true;
+    bindOptionButtons();
+  };
   const open = () => {
+    renderOptions();
     root.classList.add("is-open");
     panel.hidden = false;
     trigger.setAttribute("aria-expanded", "true");
@@ -2125,12 +2157,6 @@ function bindInstallerExtras() {
       activeCategory = button.dataset.extraCategory || "Все";
       categoryButtons.forEach((item) => item.classList.toggle("is-active", item === button));
       applyFilters();
-    });
-  });
-  optionButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      addInstallerExtra(button.dataset.extraOption);
-      close();
     });
   });
   document.addEventListener("click", (event) => {
