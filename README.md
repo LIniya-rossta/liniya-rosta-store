@@ -144,6 +144,24 @@ TELEGRAM_WEBHOOK_SECRET=случайная_длинная_строка
 
 `data/orders.json` не коммитится в GitHub: это рабочие заказы клиентов.
 
+## Чтобы новые товары не пропадали
+
+На бесплатном Render файловая система временная: товар может появиться после загрузки через Telegram, но пропасть после restart/redeploy, если он не сохранен во внешнее хранилище. В проекте есть два способа защиты:
+
+1. Render Disk: задайте `DATA_DIR` и `UPLOAD_DIR` на persistent disk.
+2. GitHub-бэкап каталога: задайте токен, и бот будет сохранять `data/products.json` и фото новых товаров прямо в репозиторий.
+
+Для GitHub-бэкапа добавьте в Render Environment:
+
+```env
+GITHUB_CATALOG_SYNC_TOKEN=github_fine_grained_token
+GITHUB_CATALOG_SYNC_REPO=LIniya-rossta/liniya-rosta-store
+GITHUB_CATALOG_SYNC_BRANCH=main
+GITHUB_CATALOG_SYNC_ENABLED=true
+```
+
+Токен должен иметь доступ `Contents: Read and write` только к репозиторию `LIniya-rossta/liniya-rosta-store`. Не добавляйте токен в код или GitHub.
+
 ## Деплой на Render
 
 GitHub Pages для этого проекта не подходит, потому что сайту нужен Node.js-сервер, API заказов и Telegram-бот. Правильная схема:
@@ -201,6 +219,10 @@ TELEGRAM_BOT_TOKEN=новый_токен_из_BotFather
 TELEGRAM_WEBHOOK_SECRET=любая_длинная_случайная_строка
 OPENAI_API_KEY=ваш_openai_api_key
 OPENAI_INSTALLER_AI_MODEL=gpt-5.6
+GITHUB_CATALOG_SYNC_TOKEN=github_fine_grained_token
+GITHUB_CATALOG_SYNC_REPO=LIniya-rossta/liniya-rosta-store
+GITHUB_CATALOG_SYNC_BRANCH=main
+GITHUB_CATALOG_SYNC_ENABLED=true
 COMPANY_WHATSAPP=996990883883
 ```
 

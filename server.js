@@ -42,6 +42,10 @@ const MAX_JSON_BODY_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_JSON_BO
 const COMPANY_WHATSAPP = process.env.COMPANY_WHATSAPP || "996990883883";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_INSTALLER_AI_MODEL = process.env.OPENAI_INSTALLER_AI_MODEL || "gpt-5.6";
+const GITHUB_CATALOG_SYNC_TOKEN = process.env.GITHUB_CATALOG_SYNC_TOKEN || "";
+const GITHUB_CATALOG_SYNC_REPO = process.env.GITHUB_CATALOG_SYNC_REPO || "LIniya-rossta/liniya-rosta-store";
+const GITHUB_CATALOG_SYNC_BRANCH = process.env.GITHUB_CATALOG_SYNC_BRANCH || "main";
+const GITHUB_CATALOG_SYNC_ENABLED = process.env.GITHUB_CATALOG_SYNC_ENABLED !== "false" && Boolean(GITHUB_CATALOG_SYNC_TOKEN);
 const DEFAULT_TELEGRAM_MANAGERS = [
   { id: "manager-1", name: "Катерина" },
   { id: "manager-2", name: "Тая" },
@@ -194,6 +198,7 @@ const server = http.createServer(async (req, res) => {
         telegramManagers: TELEGRAM_MANAGERS.length,
         telegramReady: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMIN_PASSWORD && telegramManagersReady()),
         installerAi: Boolean(OPENAI_API_KEY),
+        catalogGitHubBackup: catalogBackupEnabled(),
         setup
       });
     }
@@ -311,6 +316,121 @@ async function writeJson(file, data) {
   const temp = `${file}.tmp`;
   await fs.promises.writeFile(temp, `${JSON.stringify(data, null, 2)}\n`);
   await fs.promises.rename(temp, file);
+}
+
+async function persistProducts(products, options = {}) {
+  await writeJson(PRODUCTS_FILE, products);
+  return syncCatalogBackup(products, options);
+}
+
+function catalogBackupEnabled() {
+  return Boolean(GITHUB_CATALOG_SYNC_ENABLED && GITHUB_CATALOG_SYNC_TOKEN && GITHUB_CATALOG_SYNC_REPO);
+}
+
+async function syncCatalogBackup(products, options = {}) {
+  if (!catalogBackupEnabled()) return { enabled: false, ok: false, message: "GitHub backup is not configured" };
+
+  const files = [{
+    repoPath: "data/products.json",
+    content: Buffer.from(`${JSON.stringify(products, null, 2)}\n`)
+  }];
+
+  for (const product of options.imageProducts || []) {
+    const upload = getUploadFileForBackup(product.image);
+    if (upload) files.push(upload);
+  }
+
+  try {
+    for (const file of files) {
+      await upsertGitHubFile(file.repoPath, file.content, options.message || "Update catalog from Telegram admin");
+    }
+    return { enabled: true, ok: true, files: files.map((file) => file.repoPath) };
+  } catch (error) {
+    console.error("Catalog GitHub backup failed:", error.message);
+    return { enabled: true, ok: false, message: error.message };
+  }
+}
+
+function getUploadFileForBackup(url) {
+  const info = getUploadFileInfo(url);
+  if (!info?.localPath) return null;
+  return {
+    repoPath: `public/uploads/${info.relativePath}`,
+    content: fs.readFileSync(info.localPath)
+  };
+}
+
+function getUploadFileInfo(url) {
+  if (!url || !String(url).startsWith("/uploads/")) return null;
+  const relative = decodeURIComponent(String(url).slice("/uploads/".length));
+  const uploadPath = path.normalize(path.join(UPLOAD_DIR, relative));
+  const publicUploadDir = path.join(PUBLIC_DIR, "uploads");
+  const publicPath = path.normalize(path.join(publicUploadDir, relative));
+  const localPath =
+    isInsideDirectory(UPLOAD_DIR, uploadPath) && fs.existsSync(uploadPath)
+      ? uploadPath
+      : isInsideDirectory(publicUploadDir, publicPath) && fs.existsSync(publicPath)
+        ? publicPath
+        : "";
+  if (!localPath) return null;
+  return {
+    relativePath: relative.split(path.sep).join("/").replace(/^\/+/, ""),
+    localPath
+  };
+}
+
+async function upsertGitHubFile(repoPath, content, message) {
+  const url = githubContentUrl(repoPath);
+  const sha = await getGitHubFileSha(url);
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: githubHeaders(),
+    body: JSON.stringify({
+      message: `${message}: ${repoPath}`,
+      content: content.toString("base64"),
+      branch: GITHUB_CATALOG_SYNC_BRANCH,
+      ...(sha ? { sha } : {})
+    })
+  });
+
+  if (response.ok) return response.json();
+  const data = await response.json().catch(() => ({}));
+  const errorMessage = data.message || `GitHub returned ${response.status}`;
+  if (response.status === 422 && /same content|unchanged/i.test(errorMessage)) return null;
+  throw new Error(errorMessage);
+}
+
+async function getGitHubFileSha(url) {
+  const response = await fetch(`${url}?ref=${encodeURIComponent(GITHUB_CATALOG_SYNC_BRANCH)}`, {
+    headers: githubHeaders()
+  });
+  if (response.status === 404) return "";
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || `GitHub returned ${response.status}`);
+  }
+  const data = await response.json();
+  return data.sha || "";
+}
+
+function githubContentUrl(repoPath) {
+  const safePath = repoPath.split("/").map(encodeURIComponent).join("/");
+  return `https://api.github.com/repos/${GITHUB_CATALOG_SYNC_REPO}/contents/${safePath}`;
+}
+
+function githubHeaders() {
+  return {
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${GITHUB_CATALOG_SYNC_TOKEN}`,
+    "Content-Type": "application/json",
+    "User-Agent": "liniya-rosta-store"
+  };
+}
+
+function catalogBackupNote(result) {
+  if (!result?.enabled) return "\nGitHub-бэкап: не включен. На бесплатном Render товар может пропасть после перезапуска.";
+  if (result.ok) return "\nGitHub-бэкап: сохранен.";
+  return `\nGitHub-бэкап: ошибка - ${result.message || "проверьте токен"}.`;
 }
 
 async function readBody(req) {
@@ -1649,7 +1769,10 @@ async function publishDraftProduct(chatId, fromId) {
   const index = products.findIndex((item) => item.id === product.id);
   if (index >= 0) products[index] = product;
   else products.unshift(product);
-  await writeJson(PRODUCTS_FILE, products);
+  const backup = await persistProducts(products, {
+    imageProducts: [product],
+    message: `Publish product ${product.id}`
+  });
 
   const savedProducts = await readJson(PRODUCTS_FILE, []);
   const isVisible = savedProducts.some((item) => item.id === product.id && item.active !== false);
@@ -1658,8 +1781,8 @@ async function publishDraftProduct(chatId, fromId) {
   return sendAdminPanel(
     chatId,
     isVisible
-      ? `Товар опубликован на сайте.\nID: ${product.id}\n${PUBLIC_BASE_URL}/catalog`
-      : "Товар сохранен, но не прошел проверку видимости."
+      ? `Товар опубликован на сайте.\nID: ${product.id}\n${PUBLIC_BASE_URL}/catalog${catalogBackupNote(backup)}`
+      : `Товар сохранен, но не прошел проверку видимости.${catalogBackupNote(backup)}`
   );
 }
 
@@ -1789,8 +1912,8 @@ async function mutateProduct(chatId, id, updater) {
   if (!product) return sendMessage(chatId, "Товар с таким ID не найден.");
   const message = updater(product);
   product.updatedAt = new Date().toISOString();
-  await writeJson(PRODUCTS_FILE, products);
-  return sendMessage(chatId, message, adminKeyboard());
+  const backup = await persistProducts(products, { message: `Update product ${product.id}` });
+  return sendMessage(chatId, `${message}${catalogBackupNote(backup)}`, adminKeyboard());
 }
 
 async function handleCallback(query) {
@@ -1949,10 +2072,12 @@ async function continueEditFieldFlow(chatId, fromId, message, textValue, state) 
     return sendMessage(chatId, "Товар не найден.", adminKeyboard());
   }
 
+  let imageChanged = false;
   if (state.field === "photo") {
     if (message.photo && message.photo.length) {
       product.image = await saveTelegramPhoto(message.photo, product.id);
       product.imageFit = "cover";
+      imageChanged = true;
     } else if (!/^пропустить$/i.test(textValue)) {
       return sendMessage(chatId, "Отправьте фото или напишите 'Пропустить'.", cancelKeyboard());
     }
@@ -1971,7 +2096,11 @@ async function continueEditFieldFlow(chatId, fromId, message, textValue, state) 
   }
 
   product.updatedAt = new Date().toISOString();
-  await writeJson(PRODUCTS_FILE, products);
+  const backup = await persistProducts(products, {
+    imageProducts: imageChanged ? [product] : [],
+    message: `Edit product ${product.id}`
+  });
+  if (backup.enabled && !backup.ok) await sendMessage(chatId, catalogBackupNote(backup), adminKeyboard());
   return openProductEditor(chatId, fromId, product.id);
 }
 
@@ -1981,7 +2110,8 @@ async function toggleProductVisibility(chatId, fromId, productId) {
   if (!product) return sendMessage(chatId, "Товар не найден.", adminKeyboard());
   product.active = product.active === false;
   product.updatedAt = new Date().toISOString();
-  await writeJson(PRODUCTS_FILE, products);
+  const backup = await persistProducts(products, { message: `Toggle product ${product.id}` });
+  if (backup.enabled && !backup.ok) await sendMessage(chatId, catalogBackupNote(backup), adminKeyboard());
   return openProductEditor(chatId, fromId, product.id);
 }
 
@@ -2276,10 +2406,7 @@ async function sendInstallerRequestFiles(chatId, request) {
 }
 
 function uploadUrlToLocalPath(url) {
-  if (!url || !String(url).startsWith("/uploads/")) return "";
-  const localPath = path.normalize(path.join(UPLOAD_DIR, decodeURIComponent(String(url).slice("/uploads/".length))));
-  if (!isInsideDirectory(UPLOAD_DIR, localPath)) return "";
-  return fs.existsSync(localPath) ? localPath : "";
+  return getUploadFileInfo(url)?.localPath || "";
 }
 
 async function getManagerChatIds(managerId) {
