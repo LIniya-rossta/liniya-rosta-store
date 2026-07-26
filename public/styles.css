@@ -655,6 +655,10 @@ h3 {
   padding-top: 164px;
 }
 
+.shop-page {
+  padding-top: 112px;
+}
+
 .shop-title h1 {
   max-width: 980px;
   font-size: clamp(46px, 5vw, 68px);
@@ -671,11 +675,22 @@ h3 {
 }
 
 .catalog-bar {
+  position: sticky;
+  top: 104px;
+  z-index: 42;
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   gap: 24px;
   align-items: end;
   margin-bottom: 30px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 26px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.035)),
+    rgba(11, 18, 26, 0.84);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.2), var(--inner-glass);
+  backdrop-filter: blur(24px) saturate(1.45);
 }
 
 .search-box,
@@ -3364,6 +3379,13 @@ body[data-theme="dark"] .summary-total {
     grid-template-columns: 1fr;
     display: grid;
     align-items: start;
+  }
+
+  .catalog-bar {
+    top: 148px;
+    gap: 12px;
+    padding: 10px;
+    border-radius: 22px;
   }
 
   .product-grid {

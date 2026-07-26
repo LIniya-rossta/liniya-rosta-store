@@ -230,6 +230,7 @@ function renderHome() {
 function renderCatalog() {
   const visibleProducts = getStoreProducts();
   const filtered = filterProducts(visibleProducts);
+  const categories = catalogCategories(visibleProducts);
 
   elements.app.innerHTML = `
     <section class="shop-page page-section">
@@ -248,7 +249,7 @@ function renderCatalog() {
           <input id="searchInput" type="search" value="${escapeHtml(state.search)}" placeholder="Ламинат, профиль, пленка">
         </label>
         <div class="category-row" id="categoryRow">
-          ${catalogCategories(visibleProducts).map((category) => `
+          ${categories.map((category) => `
             <button class="${category === state.category ? "is-active" : ""}" data-category="${escapeHtml(category)}">${escapeHtml(category)}</button>
           `).join("")}
         </div>
@@ -1845,7 +1846,8 @@ function bindCatalogControls() {
   document.querySelectorAll("[data-category]").forEach((button) => {
     button.addEventListener("click", () => {
       state.category = button.dataset.category;
-      renderCatalog();
+      updateCatalogCategoryButtons();
+      renderCatalogGrid();
     });
   });
 }
@@ -1858,6 +1860,12 @@ function renderCatalogGrid() {
   grid.innerHTML = filtered.map((product) => productCard(product)).join("") || emptySearch();
   bindProductButtons();
   observeReveal();
+}
+
+function updateCatalogCategoryButtons() {
+  document.querySelectorAll("[data-category]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.category === state.category);
+  });
 }
 
 function bindProductButtons() {
