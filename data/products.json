@@ -1,5 +1,20 @@
 [
   {
+    "id": "p_ms22t244_grsv5",
+    "title": "Test",
+    "category": "Пленка",
+    "price": 0,
+    "unit": "шт",
+    "stock": "в наличии",
+    "description": "тест",
+    "image": "/uploads/p_ms22t244_grsv5.jpg",
+    "imageFit": "cover",
+    "active": true,
+    "featured": false,
+    "createdAt": "2026-07-26T17:33:55.911Z",
+    "updatedAt": "2026-07-26T17:33:55.912Z"
+  },
+  {
     "id": "p_mrvrtrs1_lgvk",
     "category": "Ламинат",
     "title": "Проверка",
