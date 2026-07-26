@@ -9,10 +9,10 @@
     "description": "тест",
     "image": "/uploads/p_ms22t244_grsv5.jpg",
     "imageFit": "cover",
-    "active": true,
+    "active": false,
     "featured": false,
     "createdAt": "2026-07-26T17:33:55.911Z",
-    "updatedAt": "2026-07-26T17:33:55.912Z"
+    "updatedAt": "2026-07-26T21:18:05.178Z"
   },
   {
     "id": "p_mrvrtrs1_lgvk",
