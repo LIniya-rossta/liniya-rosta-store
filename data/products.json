@@ -8,9 +8,10 @@
     "stock": "1000 м²",
     "description": "Тест",
     "image": "/uploads/p_mrvrtrs1_lgvk.jpg",
-    "active": true,
+    "active": false,
     "featured": false,
-    "createdAt": "2026-07-22T07:38:44.180Z"
+    "createdAt": "2026-07-22T07:38:44.180Z",
+    "updatedAt": "2026-07-26T15:25:16.506Z"
   },
   {
     "id": "cat-006-01",
