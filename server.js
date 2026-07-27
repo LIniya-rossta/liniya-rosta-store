@@ -1505,13 +1505,19 @@ function stateKey(chatId, fromId) {
 }
 
 function isAdminSession(fromId) {
+  if (isTrustedAdmin(fromId)) return true;
   const session = adminSessions.get(fromId);
   if (!session) return false;
   if (session.expiresAt <= Date.now()) {
     adminSessions.delete(fromId);
     return false;
   }
+  session.expiresAt = Date.now() + ADMIN_SESSION_MS;
   return true;
+}
+
+function isTrustedAdmin(fromId) {
+  return Boolean(fromId && TELEGRAM_ADMINS.has(fromId));
 }
 
 function markAdminSession(fromId, chatId) {
@@ -1606,6 +1612,11 @@ function startKeyboard() {
 }
 
 async function startAdminLogin(chatId, fromId) {
+  if (isTrustedAdmin(fromId)) {
+    markAdminSession(fromId, chatId);
+    return sendAdminPanel(chatId, "Вход выполнен.");
+  }
+
   botState.set(stateKey(chatId, fromId), { flow: "login", step: "login" });
   const hint = TELEGRAM_ADMIN_PASSWORD
     ? "Введите логин."
