@@ -9,10 +9,10 @@
     "description": "Лала",
     "image": "",
     "imageFit": "contain",
-    "active": true,
+    "active": false,
     "featured": false,
     "createdAt": "2026-07-27T16:58:12.393Z",
-    "updatedAt": "2026-07-27T16:58:12.393Z"
+    "updatedAt": "2026-07-27T16:59:44.375Z"
   },
   {
     "id": "p_ms3gpi01_uskcs",
