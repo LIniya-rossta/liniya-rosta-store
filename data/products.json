@@ -1,5 +1,20 @@
 [
   {
+    "id": "p_ms3gztqf_q7buq",
+    "title": "T",
+    "category": "Test",
+    "price": 0,
+    "unit": "пог",
+    "stock": "в наличии",
+    "description": "Лала",
+    "image": "",
+    "imageFit": "contain",
+    "active": true,
+    "featured": false,
+    "createdAt": "2026-07-27T16:58:12.393Z",
+    "updatedAt": "2026-07-27T16:58:12.393Z"
+  },
+  {
     "id": "p_ms3gpi01_uskcs",
     "title": "ТРЕКОВЫЙ СВЕТИЛЬНИК 1",
     "category": "Светильники",
