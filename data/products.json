@@ -1,5 +1,20 @@
 [
   {
+    "id": "p_ms48ojsa_giltg",
+    "title": "ТРЕКОВЫЙ СВЕТИЛЬНИК 2",
+    "category": "Светильники",
+    "price": 600,
+    "unit": "Шт",
+    "stock": "в наличии",
+    "description": "Трековый линейный светильник с прецизионной оптикой обеспечивает яркое, равномерное освещение и идеально подходит для современных жилых и коммерческих интерьеров",
+    "image": "/uploads/p_ms48ojsa_giltg.jpg",
+    "imageFit": "cover",
+    "active": true,
+    "featured": false,
+    "createdAt": "2026-07-28T05:54:24.048Z",
+    "updatedAt": "2026-07-28T05:54:24.048Z"
+  },
+  {
     "id": "p_ms3gztqf_q7buq",
     "title": "T",
     "category": "Test",
