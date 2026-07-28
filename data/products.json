@@ -1,5 +1,20 @@
 [
   {
+    "id": "p_ms4bkhfh_ok989",
+    "title": "Тест",
+    "category": "Пленка",
+    "price": 10,
+    "unit": "Рулон",
+    "stock": "в наличии",
+    "description": "Тест",
+    "image": "",
+    "imageFit": "contain",
+    "active": true,
+    "featured": false,
+    "createdAt": "2026-07-28T07:14:19.355Z",
+    "updatedAt": "2026-07-28T07:14:19.355Z"
+  },
+  {
     "id": "p_ms48ojsa_giltg",
     "title": "ТРЕКОВЫЙ СВЕТИЛЬНИК 2",
     "category": "Светильники",
