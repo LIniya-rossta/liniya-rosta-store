@@ -369,7 +369,7 @@
     "title": "СВЕТИЛЬНИК BLOCK",
     "category": "Светильники",
     "price": 650,
-    "unit": "шт",
+    "unit": "/start",
     "stock": "100 шт",
     "description": "размер светильника: 100х55мм · напряжение: 220V · степень защиты: IP20 · цвет: черный/белый",
     "image": "/uploads/cat-018-03.jpg",
@@ -380,7 +380,7 @@
     "catalogPage": 18,
     "createdAt": "2026-07-22T00:00:00.000Z",
     "catalogPageImage": "/uploads/catalog/page-018.jpg",
-    "updatedAt": "2026-07-28T07:05:57.652Z"
+    "updatedAt": "2026-07-28T07:06:32.802Z"
   },
   {
     "id": "cat-019-01",
