@@ -47,6 +47,20 @@ const GITHUB_CATALOG_SYNC_TOKEN =
 const GITHUB_CATALOG_SYNC_REPO = process.env.GITHUB_CATALOG_SYNC_REPO || "LIniya-rossta/liniya-rosta-store";
 const GITHUB_CATALOG_SYNC_BRANCH = process.env.GITHUB_CATALOG_SYNC_BRANCH || "main";
 const GITHUB_CATALOG_SYNC_ENABLED = process.env.GITHUB_CATALOG_SYNC_ENABLED !== "false" && Boolean(GITHUB_CATALOG_SYNC_TOKEN);
+const CATALOG_CATEGORY_ORDER = [
+  "пленка",
+  "светильники",
+  "натяжные обои",
+  "розетки и выключатели",
+  "профиль",
+  "багет",
+  "гардины",
+  "расходные материалы",
+  "вентиляционные решетки",
+  "светотехника",
+  "лопатки и шпатели",
+  "spc ламинат"
+];
 const DEFAULT_TELEGRAM_MANAGERS = [
   { id: "manager-1", name: "Катерина" },
   { id: "manager-2", name: "Тая" },
@@ -324,8 +338,9 @@ async function writeJson(file, data) {
 }
 
 async function persistProducts(products, options = {}) {
-  await writeJson(PRODUCTS_FILE, products);
-  return syncCatalogBackup(products, options);
+  const orderedProducts = orderCatalogProducts(products);
+  await writeJson(PRODUCTS_FILE, orderedProducts);
+  return syncCatalogBackup(orderedProducts, options);
 }
 
 function catalogBackupEnabled() {
@@ -1261,7 +1276,78 @@ function isSundayDateValue(dateValue) {
 }
 
 function getCatalogProducts(products) {
-  return products.length ? products : DEMO_PRODUCTS;
+  return orderCatalogProducts(products.length ? products : DEMO_PRODUCTS);
+}
+
+function orderCatalogProducts(products) {
+  return [...products]
+    .map((product, index) => ({ product, index }))
+    .sort((a, b) => compareCatalogProducts(a, b))
+    .map((entry) => entry.product);
+}
+
+function compareCatalogProducts(a, b) {
+  const left = catalogSortParts(a.product, a.index);
+  const right = catalogSortParts(b.product, b.index);
+  return (
+    left.category - right.category ||
+    left.source - right.source ||
+    left.page - right.page ||
+    left.created - right.created ||
+    left.index - right.index
+  );
+}
+
+function catalogSortParts(product, index) {
+  const category = normalizedCatalogCategory(product.category);
+  const categoryIndex = CATALOG_CATEGORY_ORDER.indexOf(category);
+  const page = Number(product.catalogPage);
+  const created = Date.parse(product.createdAt || "") || 0;
+  return {
+    category: categoryIndex === -1 ? CATALOG_CATEGORY_ORDER.length : categoryIndex,
+    source: Number.isFinite(page) ? 0 : 1,
+    page: Number.isFinite(page) ? page : Number.MAX_SAFE_INTEGER,
+    created,
+    index
+  };
+}
+
+function normalizedCatalogCategory(category) {
+  const value = String(category || "")
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (value.includes("плен") || value.includes("полотн")) return "пленка";
+  if (value.includes("светильник")) return "светильники";
+  if (value.includes("натяжн") && value.includes("обо")) return "натяжные обои";
+  if (value.includes("розет") || value.includes("выключател")) return "розетки и выключатели";
+  if (value.includes("проф")) return "профиль";
+  if (value.includes("багет")) return "багет";
+  if (value.includes("гардин")) return "гардины";
+  if (value.includes("расход")) return "расходные материалы";
+  if (value.includes("вентиляц") || value.includes("решет")) return "вентиляционные решетки";
+  if (value.includes("светотех")) return "светотехника";
+  if (value.includes("лопат") || value.includes("шпател")) return "лопатки и шпатели";
+  if (value.includes("spc") || value.includes("ламинат")) return "spc ламинат";
+  return value;
+}
+
+function insertProductIntoCatalogSection(products, product) {
+  const nextProducts = [...products];
+  const targetCategory = normalizedCatalogCategory(product.category);
+  let insertAt = nextProducts.length;
+
+  for (let index = nextProducts.length - 1; index >= 0; index -= 1) {
+    if (normalizedCatalogCategory(nextProducts[index].category) === targetCategory) {
+      insertAt = index + 1;
+      break;
+    }
+  }
+
+  nextProducts.splice(insertAt, 0, product);
+  return nextProducts;
 }
 
 function isInstallerFilmMaterial(product) {
@@ -1872,9 +1958,9 @@ async function publishDraftProduct(chatId, fromId) {
   const product = normalizeProductForSave(state.product);
   const products = await readJson(PRODUCTS_FILE, []);
   const index = products.findIndex((item) => item.id === product.id);
-  if (index >= 0) products[index] = product;
-  else products.unshift(product);
-  const backup = await persistProducts(products, {
+  const nextProducts = index >= 0 ? [...products] : insertProductIntoCatalogSection(products, product);
+  if (index >= 0) nextProducts[index] = product;
+  const backup = await persistProducts(nextProducts, {
     imageProducts: [product],
     message: `Publish product ${product.id}`
   });
