@@ -389,7 +389,7 @@
     "price": 250,
     "unit": "шт",
     "stock": "100 шт",
-    "description": "СВЕТИЛЬНИК · МONZA RX007 · размер светильника: Ф108х45мм · напряжение: 220V, 50 Гц · степень защиты: IP20 · цвет: черный/белый",
+    "description": "размер светильника: Ф108х45мм · напряжение: 220V, 50 Гц · степень защиты: IP20 · цвет: черный/белый",
     "image": "/uploads/cat-019-01.jpg",
     "imageFit": "cover",
     "active": true,
@@ -398,7 +398,7 @@
     "catalogPage": 19,
     "createdAt": "2026-07-22T00:00:00.000Z",
     "catalogPageImage": "/uploads/catalog/page-019.jpg",
-    "updatedAt": "2026-07-28T07:08:19.312Z"
+    "updatedAt": "2026-07-28T07:08:44.212Z"
   },
   {
     "id": "cat-019-02",
