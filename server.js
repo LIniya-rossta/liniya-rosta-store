@@ -59,6 +59,9 @@ const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 const WATCHERS_FILE = path.join(DATA_DIR, "telegram-watchers.json");
 const INSTALLER_REQUESTS_FILE = path.join(DATA_DIR, "installer-requests.json");
 const MANAGER_BINDINGS_FILE = path.join(DATA_DIR, "telegram-manager-bindings.json");
+const BOT_STATE_FILE = path.join(DATA_DIR, "telegram-bot-state.json");
+const ADMIN_SESSIONS_FILE = path.join(DATA_DIR, "telegram-admin-sessions.json");
+const MANAGER_SESSIONS_FILE = path.join(DATA_DIR, "telegram-manager-sessions.json");
 const TELEGRAM_MANAGERS = getTelegramManagers();
 const DEMO_PRODUCTS = [
   {
@@ -126,6 +129,7 @@ const managerSessions = new Map();
 let botOffset = 0;
 
 ensureStorage();
+hydrateTelegramRuntimeState();
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -1456,10 +1460,10 @@ async function handleTelegramUpdate(update) {
   const fromId = String(message.from?.id || "");
   const textValue = (message.text || message.caption || "").trim();
   const key = stateKey(chatId, fromId);
-  const state = botState.get(key);
+  const state = getBotState(key);
 
   if (textValue === "❌ Отмена" || textValue === "/cancel") {
-    botState.delete(key);
+    deleteBotState(key);
     return isAdminSession(fromId)
       ? sendAdminPanel(chatId, "Действие отменено.")
       : sendStartMenu(chatId, "Действие отменено.");
@@ -1504,15 +1508,92 @@ function stateKey(chatId, fromId) {
   return `${chatId}:${fromId}`;
 }
 
+function hydrateTelegramRuntimeState() {
+  hydrateMapFromFile(BOT_STATE_FILE, botState);
+  hydrateMapFromFile(ADMIN_SESSIONS_FILE, adminSessions, { pruneExpired: true });
+  hydrateMapFromFile(MANAGER_SESSIONS_FILE, managerSessions, { pruneExpired: true });
+}
+
+function hydrateMapFromFile(file, map, options = {}) {
+  try {
+    const entries = Object.entries(JSON.parse(fs.readFileSync(file, "utf8")));
+    const now = Date.now();
+    for (const [key, value] of entries) {
+      if (!value || typeof value !== "object") continue;
+      if (options.pruneExpired && Number(value.expiresAt || 0) <= now) continue;
+      map.set(key, value);
+    }
+  } catch {
+    // Runtime Telegram state is optional and recreated as the bot is used.
+  }
+}
+
+function persistMapToFile(file, map) {
+  try {
+    const temp = `${file}.tmp`;
+    fs.writeFileSync(temp, `${JSON.stringify(Object.fromEntries(map), null, 2)}\n`);
+    fs.renameSync(temp, file);
+  } catch (error) {
+    console.error(`Cannot persist ${path.basename(file)}:`, error.message);
+  }
+}
+
+function persistBotState() {
+  persistMapToFile(BOT_STATE_FILE, botState);
+}
+
+function getBotState(key) {
+  return botState.get(key);
+}
+
+function setBotState(key, value) {
+  botState.set(key, value);
+  persistBotState();
+}
+
+function deleteBotState(key) {
+  const changed = botState.delete(key);
+  if (changed) persistBotState();
+}
+
+function persistAdminSessions() {
+  persistMapToFile(ADMIN_SESSIONS_FILE, adminSessions);
+}
+
+function setAdminSession(fromId, value) {
+  adminSessions.set(fromId, value);
+  persistAdminSessions();
+}
+
+function deleteAdminSession(fromId) {
+  const changed = adminSessions.delete(fromId);
+  if (changed) persistAdminSessions();
+}
+
+function persistManagerSessions() {
+  persistMapToFile(MANAGER_SESSIONS_FILE, managerSessions);
+}
+
+function setManagerSession(fromId, value) {
+  managerSessions.set(fromId, value);
+  persistManagerSessions();
+}
+
+function deleteManagerSession(fromId) {
+  const changed = managerSessions.delete(fromId);
+  if (changed) persistManagerSessions();
+}
+
 function isAdminSession(fromId) {
   if (isTrustedAdmin(fromId)) return true;
   const session = adminSessions.get(fromId);
   if (!session) return false;
   if (session.expiresAt <= Date.now()) {
-    adminSessions.delete(fromId);
+    deleteAdminSession(fromId);
     return false;
   }
   session.expiresAt = Date.now() + ADMIN_SESSION_MS;
+  persistAdminSessions();
   return true;
 }
 
@@ -1521,7 +1602,7 @@ function isTrustedAdmin(fromId) {
 }
 
 function markAdminSession(fromId, chatId) {
-  adminSessions.set(fromId, {
+  setAdminSession(fromId, {
     chatId,
     expiresAt: Date.now() + ADMIN_SESSION_MS
   });
@@ -1531,14 +1612,16 @@ function getManagerSession(fromId) {
   const session = managerSessions.get(fromId);
   if (!session) return null;
   if (session.expiresAt <= Date.now()) {
-    managerSessions.delete(fromId);
+    deleteManagerSession(fromId);
     return null;
   }
+  session.expiresAt = Date.now() + MANAGER_SESSION_MS;
+  persistManagerSessions();
   return session;
 }
 
 function markManagerSession(fromId, chatId, managerId) {
-  managerSessions.set(fromId, {
+  setManagerSession(fromId, {
     chatId,
     managerId,
     expiresAt: Date.now() + MANAGER_SESSION_MS
@@ -1549,7 +1632,7 @@ async function startManagerLogin(chatId, fromId) {
   if (!telegramManagersWithPassword().length) {
     return sendStartMenu(chatId, "Пароли менеджеров не настроены на сервере.");
   }
-  botState.set(stateKey(chatId, fromId), { flow: "manager_login", step: "password" });
+  setBotState(stateKey(chatId, fromId), { flow: "manager_login", step: "password" });
   return sendMessage(chatId, "Введите пароль менеджера.", cancelKeyboard());
 }
 
@@ -1561,15 +1644,15 @@ async function continueManagerLoginFlow(chatId, fromId, textValue, state, chat =
     return sendMessage(chatId, "Пароль неверный. Попробуйте еще раз или нажмите /cancel.", cancelKeyboard());
   }
 
-  botState.delete(stateKey(chatId, fromId));
+  deleteBotState(stateKey(chatId, fromId));
   markManagerSession(fromId, chatId, manager.id);
   await bindManagerChat(manager.id, chatId, fromId, chat);
   return sendManagerPanel(chatId, `Вход выполнен: ${manager.name}.`, manager.id);
 }
 
 async function logoutManager(chatId, fromId) {
-  managerSessions.delete(fromId);
-  botState.delete(stateKey(chatId, fromId));
+  deleteManagerSession(fromId);
+  deleteBotState(stateKey(chatId, fromId));
   return sendStartMenu(chatId, "Вы вышли из панели менеджера.");
 }
 
@@ -1617,7 +1700,7 @@ async function startAdminLogin(chatId, fromId) {
     return sendAdminPanel(chatId, "Вход выполнен.");
   }
 
-  botState.set(stateKey(chatId, fromId), { flow: "login", step: "login" });
+  setBotState(stateKey(chatId, fromId), { flow: "login", step: "login" });
   const hint = TELEGRAM_ADMIN_PASSWORD
     ? "Введите логин."
     : "Пароль админ-панели не задан на сервере. Добавьте TELEGRAM_ADMIN_PASSWORD в Render Environment, затем повторите вход.";
@@ -1626,7 +1709,7 @@ async function startAdminLogin(chatId, fromId) {
 
 async function continueLoginFlow(chatId, fromId, textValue, state) {
   if (!TELEGRAM_ADMIN_PASSWORD) {
-    botState.delete(stateKey(chatId, fromId));
+    deleteBotState(stateKey(chatId, fromId));
     return sendStartMenu(chatId, "Админ-пароль не настроен на сервере.");
   }
 
@@ -1635,6 +1718,7 @@ async function continueLoginFlow(chatId, fromId, textValue, state) {
       return sendMessage(chatId, "Логин неверный. Попробуйте еще раз или нажмите /cancel.", cancelKeyboard());
     }
     state.step = "password";
+    persistBotState();
     return sendMessage(chatId, "Введите пароль.", cancelKeyboard());
   }
 
@@ -1642,20 +1726,20 @@ async function continueLoginFlow(chatId, fromId, textValue, state) {
     if (textValue !== TELEGRAM_ADMIN_PASSWORD) {
       return sendMessage(chatId, "Пароль неверный. Попробуйте еще раз или нажмите /cancel.", cancelKeyboard());
     }
-    botState.delete(stateKey(chatId, fromId));
+    deleteBotState(stateKey(chatId, fromId));
     markAdminSession(fromId, chatId);
     return sendAdminPanel(chatId, "Вход выполнен.");
   }
 }
 
 async function logoutAdmin(chatId, fromId) {
-  adminSessions.delete(fromId);
-  botState.delete(stateKey(chatId, fromId));
+  deleteAdminSession(fromId);
+  deleteBotState(stateKey(chatId, fromId));
   return sendStartMenu(chatId, "Вы вышли из админ-панели.");
 }
 
 async function startProductFlow(chatId, fromId) {
-  botState.set(stateKey(chatId, fromId), {
+  setBotState(stateKey(chatId, fromId), {
     flow: "product",
     step: "category",
     product: {
@@ -1674,6 +1758,7 @@ async function continueProductFlow(chatId, adminId, message, textValue, state) {
     if (!product.category) return sendMessage(chatId, "Напишите категорию.");
     if (state.editing) return finishDraftEdit(chatId, state);
     state.step = "title";
+    persistBotState();
     return sendMessage(chatId, "Название товара?");
   }
 
@@ -1682,6 +1767,7 @@ async function continueProductFlow(chatId, adminId, message, textValue, state) {
     if (!product.title) return sendMessage(chatId, "Напишите название.");
     if (state.editing) return finishDraftEdit(chatId, state);
     state.step = "price";
+    persistBotState();
     return sendMessage(chatId, "Цена в сомах? Только число. Если цена договорная, напишите 0.");
   }
 
@@ -1691,6 +1777,7 @@ async function continueProductFlow(chatId, adminId, message, textValue, state) {
     product.price = Math.round(price);
     if (state.editing) return finishDraftEdit(chatId, state);
     state.step = "unit";
+    persistBotState();
     return sendMessage(chatId, "Единица измерения? Например: м², шт, пог. м, рулон.");
   }
 
@@ -1698,6 +1785,7 @@ async function continueProductFlow(chatId, adminId, message, textValue, state) {
     product.unit = normalizeUnit(textValue);
     if (state.editing) return finishDraftEdit(chatId, state);
     state.step = "description";
+    persistBotState();
     return sendMessage(chatId, "Описание товара. Можно коротко. Чтобы пропустить, напишите 'Пропустить'.");
   }
 
@@ -1705,6 +1793,7 @@ async function continueProductFlow(chatId, adminId, message, textValue, state) {
     product.description = /^пропустить$/i.test(textValue) ? "" : trimText(textValue, 800);
     if (state.editing) return finishDraftEdit(chatId, state);
     state.step = "photo";
+    persistBotState();
     return sendMessage(chatId, "Отправьте фото товара или напишите 'Пропустить'.");
   }
 
@@ -1717,6 +1806,7 @@ async function continueProductFlow(chatId, adminId, message, textValue, state) {
 
     state.step = "confirm";
     state.editing = false;
+    persistBotState();
     return sendProductDraft(chatId, product);
   }
 
@@ -1728,6 +1818,7 @@ async function continueProductFlow(chatId, adminId, message, textValue, state) {
 async function finishDraftEdit(chatId, state) {
   state.step = "confirm";
   state.editing = false;
+  persistBotState();
   return sendProductDraft(chatId, state.product, "Поле обновлено. Проверьте карточку.");
 }
 
@@ -1773,7 +1864,7 @@ function productDraftEditKeyboard() {
 
 async function publishDraftProduct(chatId, fromId) {
   const key = stateKey(chatId, fromId);
-  const state = botState.get(key);
+  const state = getBotState(key);
   if (state?.flow !== "product" || state.step !== "confirm") {
     return sendMessage(chatId, "Черновик товара не найден. Нажмите 'Добавить товар' заново.", adminKeyboard());
   }
@@ -1790,7 +1881,7 @@ async function publishDraftProduct(chatId, fromId) {
 
   const savedProducts = await readJson(PRODUCTS_FILE, []);
   const isVisible = savedProducts.some((item) => item.id === product.id && item.active !== false);
-  botState.delete(key);
+  deleteBotState(key);
 
   return sendAdminPanel(
     chatId,
@@ -1963,16 +2054,17 @@ async function handleCallback(query) {
 async function handleProductCallback(chatId, fromId, data) {
   if (!isAdminSession(fromId)) return sendMessage(chatId, "Сначала войдите в админ-панель через /admin.");
   const key = stateKey(chatId, fromId);
-  const state = botState.get(key);
+  const state = getBotState(key);
 
   if (data === "product:publish") return publishDraftProduct(chatId, fromId);
   if (data === "product:cancel") {
-    botState.delete(key);
+    deleteBotState(key);
     return sendAdminPanel(chatId, "Публикация товара отменена.");
   }
   if (data === "product:confirm") {
     if (state?.flow !== "product") return sendAdminPanel(chatId, "Черновик товара не найден.");
     state.step = "confirm";
+    persistBotState();
     return sendProductDraft(chatId, state.product);
   }
   if (data === "product:edit") {
@@ -1984,6 +2076,7 @@ async function handleProductCallback(chatId, fromId, data) {
     const field = data.split(":")[2];
     state.step = field;
     state.editing = true;
+    persistBotState();
     return askProductField(chatId, field);
   }
 }
@@ -2001,7 +2094,7 @@ function askProductField(chatId, field) {
 }
 
 async function startEditProductFlow(chatId, fromId) {
-  botState.set(stateKey(chatId, fromId), { flow: "edit_product", step: "find" });
+  setBotState(stateKey(chatId, fromId), { flow: "edit_product", step: "find" });
   const products = await readJson(PRODUCTS_FILE, []);
   const visible = products.filter((product) => product.active !== false).slice(0, 8);
   const keyboard = visible.length
@@ -2038,13 +2131,13 @@ async function handleEditProductCallback(chatId, fromId, data) {
   if (action === "field") return startProductFieldEdit(chatId, fromId, productId, field);
   if (action === "toggle") return toggleProductVisibility(chatId, fromId, productId);
   if (action === "done") {
-    botState.delete(stateKey(chatId, fromId));
+    deleteBotState(stateKey(chatId, fromId));
     return sendAdminPanel(chatId, "Редактирование завершено.");
   }
 }
 
 async function openProductEditor(chatId, fromId, productId) {
-  botState.set(stateKey(chatId, fromId), { flow: "edit_product", step: "selected", productId });
+  setBotState(stateKey(chatId, fromId), { flow: "edit_product", step: "selected", productId });
   const products = await readJson(PRODUCTS_FILE, []);
   const product = products.find((item) => item.id === productId);
   if (!product) return sendMessage(chatId, "Товар не найден.", adminKeyboard());
@@ -2074,7 +2167,7 @@ function productEditKeyboard(product) {
 }
 
 async function startProductFieldEdit(chatId, fromId, productId, field) {
-  botState.set(stateKey(chatId, fromId), { flow: "edit_field", productId, field });
+  setBotState(stateKey(chatId, fromId), { flow: "edit_field", productId, field });
   return askProductField(chatId, field);
 }
 
@@ -2082,7 +2175,7 @@ async function continueEditFieldFlow(chatId, fromId, message, textValue, state) 
   const products = await readJson(PRODUCTS_FILE, []);
   const product = products.find((item) => item.id === state.productId);
   if (!product) {
-    botState.delete(stateKey(chatId, fromId));
+    deleteBotState(stateKey(chatId, fromId));
     return sendMessage(chatId, "Товар не найден.", adminKeyboard());
   }
 

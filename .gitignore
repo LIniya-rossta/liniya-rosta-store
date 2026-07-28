@@ -1,6 +1,11 @@
 .env
 data/orders.json
 data/telegram-watchers.json
+data/installer-requests.json
+data/telegram-manager-bindings.json
+data/telegram-bot-state.json
+data/telegram-admin-sessions.json
+data/telegram-manager-sessions.json
 storage/
 public/uploads/*
 !public/uploads/.gitkeep
