@@ -371,7 +371,7 @@
     "price": 650,
     "unit": "шт",
     "stock": "100 шт",
-    "description": "*по предзаказу · СВЕТИЛЬНИК EKS · BLOCK · размер светильника: 100х55мм · напряжение: 220V · степень защиты: IP20 · цвет: черный/белый",
+    "description": "размер светильника: 100х55мм · напряжение: 220V · степень защиты: IP20 · цвет: черный/белый",
     "image": "/uploads/cat-018-03.jpg",
     "imageFit": "cover",
     "active": true,
@@ -380,7 +380,7 @@
     "catalogPage": 18,
     "createdAt": "2026-07-22T00:00:00.000Z",
     "catalogPageImage": "/uploads/catalog/page-018.jpg",
-    "updatedAt": "2026-07-28T07:03:43.620Z"
+    "updatedAt": "2026-07-28T07:05:57.652Z"
   },
   {
     "id": "cat-019-01",
