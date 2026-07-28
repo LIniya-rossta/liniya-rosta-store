@@ -442,12 +442,13 @@
     "description": "СВЕТИЛЬНИК · ШАР",
     "image": "/uploads/products/page-019-02.jpg",
     "imageFit": "contain",
-    "active": true,
+    "active": false,
     "featured": false,
     "source": "pdf-catalog-2025",
     "catalogPage": 19,
     "createdAt": "2026-07-22T00:00:00.000Z",
-    "catalogPageImage": "/uploads/catalog/page-019.jpg"
+    "catalogPageImage": "/uploads/catalog/page-019.jpg",
+    "updatedAt": "2026-07-28T15:12:18.642Z"
   },
   {
     "id": "cat-020-01",
