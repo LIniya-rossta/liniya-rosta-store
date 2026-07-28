@@ -356,12 +356,13 @@
     "description": "*по предзаказу · СВЕТИЛЬНИК EKS · HANDY · размер светильника: Ф90х50мм · напряжение: 185-265V · мощность: 10 Вт · степень защиты: IP20 · цвет: черный/белый",
     "image": "/uploads/products/page-018-01.jpg",
     "imageFit": "contain",
-    "active": true,
+    "active": false,
     "featured": true,
     "source": "pdf-catalog-2025",
     "catalogPage": 18,
     "createdAt": "2026-07-22T00:00:00.000Z",
-    "catalogPageImage": "/uploads/catalog/page-018.jpg"
+    "catalogPageImage": "/uploads/catalog/page-018.jpg",
+    "updatedAt": "2026-07-28T06:56:04.182Z"
   },
   {
     "id": "cat-018-03",
