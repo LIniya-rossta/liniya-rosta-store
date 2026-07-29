@@ -647,7 +647,7 @@
   },
   {
     "id": "cat-023-05",
-    "title": "СВЕТИЛЬНИК EKS INFINITY",
+    "title": "СВЕТИЛЬНИК INFINITY",
     "category": "Светильники",
     "price": 300,
     "unit": "шт",
@@ -658,7 +658,7 @@
     "active": true,
     "featured": false,
     "createdAt": "2026-07-27T04:54:04.000Z",
-    "updatedAt": "2026-07-27T04:54:04.000Z",
+    "updatedAt": "2026-07-29T10:34:03.237Z",
     "source": "pdf-catalog-2026-07-27",
     "catalogPage": 23,
     "catalogSlot": 3,
