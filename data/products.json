@@ -419,7 +419,7 @@
   },
   {
     "id": "cat-020-02",
-    "title": "СВЕТИЛЬНИК MONZA GX007",
+    "title": "СВЕТИЛЬНИК GX007",
     "category": "Светильники",
     "price": 250,
     "unit": "шт",
@@ -430,7 +430,7 @@
     "active": true,
     "featured": false,
     "createdAt": "2026-07-27T04:54:04.000Z",
-    "updatedAt": "2026-07-27T04:54:04.000Z",
+    "updatedAt": "2026-07-29T10:04:48.328Z",
     "source": "pdf-catalog-2026-07-27",
     "catalogPage": 20,
     "catalogSlot": 2,
