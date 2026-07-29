@@ -457,7 +457,7 @@
   },
   {
     "id": "cat-021-01",
-    "title": "СВЕТИЛЬНИК LU LED 117-2",
+    "title": "СВЕТИЛЬНИК 117-2",
     "category": "Светильники",
     "price": 300,
     "unit": "шт",
@@ -468,7 +468,7 @@
     "active": true,
     "featured": false,
     "createdAt": "2026-07-27T04:54:04.000Z",
-    "updatedAt": "2026-07-27T04:54:04.000Z",
+    "updatedAt": "2026-07-29T10:09:21.967Z",
     "source": "pdf-catalog-2026-07-27",
     "catalogPage": 21,
     "catalogSlot": 1,
