@@ -324,7 +324,7 @@
   },
   {
     "id": "cat-018-03",
-    "title": "СВЕТИЛЬНИК EKS BLOCK",
+    "title": "СВЕТИЛЬНИК BLOCK",
     "category": "Светильники",
     "price": 650,
     "unit": "шт",
@@ -335,7 +335,7 @@
     "active": true,
     "featured": false,
     "createdAt": "2026-07-27T04:54:04.000Z",
-    "updatedAt": "2026-07-27T04:54:04.000Z",
+    "updatedAt": "2026-07-29T09:47:44.196Z",
     "source": "pdf-catalog-2026-07-27",
     "catalogPage": 18,
     "catalogSlot": 3,
