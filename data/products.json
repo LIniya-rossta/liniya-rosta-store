@@ -742,7 +742,7 @@
   },
   {
     "id": "cat-025-02",
-    "title": "ТРЕКОВЫЙ СВЕРИЛЬНИК 7",
+    "title": "ТРЕКОВЫЙ СВЕТИЛЬНИК 7",
     "category": "Светильники",
     "price": 1200,
     "unit": "шт",
@@ -753,7 +753,7 @@
     "active": true,
     "featured": false,
     "createdAt": "2026-07-27T04:54:04.000Z",
-    "updatedAt": "2026-07-29T10:53:06.377Z",
+    "updatedAt": "2026-07-29T10:54:57.818Z",
     "source": "pdf-catalog-2026-07-27",
     "catalogPage": 25,
     "catalogSlot": 2,
