@@ -343,7 +343,7 @@
   },
   {
     "id": "cat-019-01",
-    "title": "СВЕТИЛЬНИК MONZA RX007",
+    "title": "СВЕТИЛЬНИК RX007",
     "category": "Светильники",
     "price": 250,
     "unit": "шт",
@@ -354,7 +354,7 @@
     "active": true,
     "featured": false,
     "createdAt": "2026-07-27T04:54:04.000Z",
-    "updatedAt": "2026-07-27T04:54:04.000Z",
+    "updatedAt": "2026-07-29T09:50:27.131Z",
     "source": "pdf-catalog-2026-07-27",
     "catalogPage": 19,
     "catalogSlot": 1,
