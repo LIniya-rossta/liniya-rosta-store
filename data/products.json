@@ -533,7 +533,7 @@
   },
   {
     "id": "cat-022-02",
-    "title": "СВЕТИЛЬНИК MONZA GX5380",
+    "title": "СВЕТИЛЬНИК 5380",
     "category": "Светильники",
     "price": 250,
     "unit": "шт",
@@ -544,7 +544,7 @@
     "active": true,
     "featured": false,
     "createdAt": "2026-07-27T04:54:04.000Z",
-    "updatedAt": "2026-07-27T04:54:04.000Z",
+    "updatedAt": "2026-07-29T10:20:03.400Z",
     "source": "pdf-catalog-2026-07-27",
     "catalogPage": 22,
     "catalogSlot": 2,
