@@ -704,7 +704,7 @@
   },
   {
     "id": "cat-024-03",
-    "title": "ТРЕКОВЫЙ СВЕТИЛЬНИК ALBA",
+    "title": "ТРЕКОВЫЙ СВЕТИЛЬНИК",
     "category": "Светильники",
     "price": 600,
     "unit": "шт",
@@ -715,7 +715,7 @@
     "active": true,
     "featured": false,
     "createdAt": "2026-07-27T04:54:04.000Z",
-    "updatedAt": "2026-07-29T10:39:42.575Z",
+    "updatedAt": "2026-07-29T10:39:57.301Z",
     "source": "pdf-catalog-2026-07-27",
     "catalogPage": 24,
     "catalogSlot": 3,
