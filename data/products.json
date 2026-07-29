@@ -476,7 +476,7 @@
   },
   {
     "id": "cat-021-02",
-    "title": "СВЕТИЛЬНИК MONZA 5333",
+    "title": "СВЕТИЛЬНИК 5333",
     "category": "Светильники",
     "price": 250,
     "unit": "шт",
@@ -487,7 +487,7 @@
     "active": true,
     "featured": false,
     "createdAt": "2026-07-27T04:54:04.000Z",
-    "updatedAt": "2026-07-29T10:15:44.392Z",
+    "updatedAt": "2026-07-29T10:15:58.925Z",
     "source": "pdf-catalog-2026-07-27",
     "catalogPage": 21,
     "catalogSlot": 2,
