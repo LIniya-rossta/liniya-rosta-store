@@ -723,7 +723,7 @@
   },
   {
     "id": "cat-025-01",
-    "title": "ТРЕКОВЫЙ СВЕТИЛЬНИК 1300",
+    "title": "ТРЕКОВЫЙ СВЕТИЛЬНИК 6",
     "category": "Светильники",
     "price": 1300,
     "unit": "шт",
@@ -734,7 +734,7 @@
     "active": true,
     "featured": false,
     "createdAt": "2026-07-27T04:54:04.000Z",
-    "updatedAt": "2026-07-29T10:51:05.081Z",
+    "updatedAt": "2026-07-29T10:51:28.897Z",
     "source": "pdf-catalog-2026-07-27",
     "catalogPage": 25,
     "catalogSlot": 1,
