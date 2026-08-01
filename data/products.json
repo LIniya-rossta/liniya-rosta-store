@@ -1501,7 +1501,7 @@
   },
   {
     "id": "cat-052-02",
-    "title": "AIR X 2 парящий с уклоном",
+    "title": "AIR X2",
     "category": "Профиль",
     "price": 800,
     "unit": "пог. м",
@@ -1512,7 +1512,7 @@
     "active": true,
     "featured": false,
     "createdAt": "2026-07-27T04:54:04.000Z",
-    "updatedAt": "2026-07-27T04:54:04.000Z",
+    "updatedAt": "2026-08-01T11:49:28.846Z",
     "source": "pdf-catalog-2026-07-27",
     "catalogPage": 52,
     "catalogSlot": 2,
