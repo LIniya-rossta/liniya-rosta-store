@@ -1591,13 +1591,48 @@ async function handleTelegramUpdate(update) {
 }
 
 function stateKey(chatId, fromId) {
-  return `${chatId}:${fromId}`;
+  if (!fromId) return "";
+  return `user:${fromId}:chat:${chatId}`;
 }
 
 function hydrateTelegramRuntimeState() {
   hydrateMapFromFile(BOT_STATE_FILE, botState);
+  normalizeBotStateKeys();
   hydrateMapFromFile(ADMIN_SESSIONS_FILE, adminSessions, { pruneExpired: true });
+  normalizeAdminSessions();
   hydrateMapFromFile(MANAGER_SESSIONS_FILE, managerSessions, { pruneExpired: true });
+}
+
+function normalizeBotStateKeys() {
+  let changed = false;
+  for (const [key, value] of [...botState.entries()]) {
+    const textKey = String(key);
+    if (textKey.startsWith("user:")) continue;
+
+    const normalizedKey = legacyStateKeyToCurrent(textKey);
+    if (normalizedKey && !botState.has(normalizedKey)) botState.set(normalizedKey, value);
+    botState.delete(key);
+    changed = true;
+  }
+  if (changed) persistBotState();
+}
+
+function legacyStateKeyToCurrent(key) {
+  if (key.startsWith("chat:")) return "";
+
+  const [chatId, fromId] = key.split(":");
+  if (!chatId || !fromId) return "";
+  return stateKey(chatId, fromId);
+}
+
+function normalizeAdminSessions() {
+  let changed = false;
+  for (const key of [...adminSessions.keys()]) {
+    if (!String(key).startsWith("chat:")) continue;
+    adminSessions.delete(key);
+    changed = true;
+  }
+  if (changed) persistAdminSessions();
 }
 
 function hydrateMapFromFile(file, map, options = {}) {
@@ -1670,17 +1705,29 @@ function deleteManagerSession(fromId) {
   if (changed) persistManagerSessions();
 }
 
+function adminSessionKeys(fromId) {
+  return fromId ? [fromId] : [];
+}
+
 function isAdminSession(fromId) {
   if (isTrustedAdmin(fromId)) return true;
-  const session = adminSessions.get(fromId);
-  if (!session) return false;
-  if (session.expiresAt <= Date.now()) {
-    deleteAdminSession(fromId);
-    return false;
+
+  const keys = adminSessionKeys(fromId);
+  for (const key of keys) {
+    const session = adminSessions.get(key);
+    if (!session) continue;
+    if (session.expiresAt <= Date.now()) {
+      deleteAdminSession(key);
+      continue;
+    }
+
+    session.expiresAt = Date.now() + ADMIN_SESSION_MS;
+    adminSessions.set(key, { ...session });
+    persistAdminSessions();
+    return true;
   }
-  session.expiresAt = Date.now() + ADMIN_SESSION_MS;
-  persistAdminSessions();
-  return true;
+
+  return false;
 }
 
 function isTrustedAdmin(fromId) {
@@ -1688,10 +1735,13 @@ function isTrustedAdmin(fromId) {
 }
 
 function markAdminSession(fromId, chatId) {
-  setAdminSession(fromId, {
+  if (!fromId) return;
+  const session = {
     chatId,
     expiresAt: Date.now() + ADMIN_SESSION_MS
-  });
+  };
+  adminSessions.set(fromId, session);
+  persistAdminSessions();
 }
 
 function getManagerSession(fromId) {
@@ -1758,8 +1808,8 @@ async function bindManagerChat(managerId, chatId, fromId, chat = {}) {
   await writeJson(MANAGER_BINDINGS_FILE, bindings);
 }
 
-function canRegisterWatcher(fromId) {
-  return TELEGRAM_ADMINS.has(fromId) || TELEGRAM_OBSERVERS.has(fromId) || isAdminSession(fromId);
+function canRegisterWatcher(fromId, chatId = "") {
+  return TELEGRAM_ADMINS.has(fromId) || TELEGRAM_OBSERVERS.has(fromId) || TELEGRAM_OBSERVERS.has(chatId) || isAdminSession(fromId);
 }
 
 async function sendStartMenu(chatId, prefix = "Линия Роста") {
@@ -2513,7 +2563,7 @@ function orderKeyboard(order) {
 }
 
 async function subscribeWatcher(chatId, fromId, chat = {}) {
-  if (!canRegisterWatcher(fromId)) {
+  if (!canRegisterWatcher(fromId, chatId)) {
     return sendMessage(chatId, "Наблюдение доступно только менеджерам Линии Роста. Для доступа войдите в админ-панель.");
   }
 
