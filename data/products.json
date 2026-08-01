@@ -1615,7 +1615,7 @@
   },
   {
     "id": "cat-054-02",
-    "title": "X 10 световая линия с уклоном",
+    "title": "X 10",
     "category": "Профиль",
     "price": 600,
     "unit": "пог. м",
@@ -1626,7 +1626,7 @@
     "active": true,
     "featured": false,
     "createdAt": "2026-07-27T04:54:04.000Z",
-    "updatedAt": "2026-07-27T04:54:04.000Z",
+    "updatedAt": "2026-08-01T14:32:57.602Z",
     "source": "pdf-catalog-2026-07-27",
     "catalogPage": 54,
     "catalogSlot": 2,
