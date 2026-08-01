@@ -1436,6 +1436,21 @@
     "updatedAt": "2026-08-01T06:10:49.102Z"
   },
   {
+    "id": "p_ms9z5qdt_snyqx",
+    "title": "AURA ELECTRIC - позиция 14",
+    "category": "Розетки и выключатели",
+    "price": 185,
+    "unit": "Шт",
+    "stock": "в наличии",
+    "description": "Тройной выключатель серого цвета — стильное и надежное решение для современных интерьеров, сочетающее лаконичный дизайн и удобство использования.",
+    "image": "/uploads/p_ms9z5qdt_snyqx.jpg",
+    "imageFit": "cover",
+    "active": true,
+    "featured": false,
+    "createdAt": "2026-08-01T06:13:34.514Z",
+    "updatedAt": "2026-08-01T06:13:34.514Z"
+  },
+  {
     "id": "cat-052-01",
     "title": "AIR X парящий с уклоном",
     "category": "Профиль",
