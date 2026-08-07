@@ -5072,6 +5072,21 @@
     "catalogPageImage": "/uploads/catalog/page-105.jpg"
   },
   {
+    "id": "p_msie6b1n_28ebm",
+    "title": "Лопатка с выборкой мини",
+    "category": "Лопатки и шпатели",
+    "price": 0,
+    "unit": "Шт",
+    "stock": "в наличии",
+    "description": "Размер: 37*1,5 мм",
+    "image": "/uploads/p_msie6b1n_28ebm.jpg",
+    "imageFit": "cover",
+    "active": true,
+    "featured": false,
+    "createdAt": "2026-08-07T03:36:20.574Z",
+    "updatedAt": "2026-08-07T03:36:20.574Z"
+  },
+  {
     "id": "cat-108-01",
     "title": "ТИС АЛЬПИК",
     "category": "SPC ламинат",
