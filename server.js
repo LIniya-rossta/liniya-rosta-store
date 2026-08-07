@@ -28,8 +28,6 @@ const ENABLE_TELEGRAM_BOT = process.env.ENABLE_TELEGRAM_BOT !== "false";
 const TELEGRAM_BOT_MODE = process.env.TELEGRAM_BOT_MODE || (PUBLIC_BASE_URL.startsWith("https://") ? "webhook" : "polling");
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || deriveTelegramSecret(TELEGRAM_BOT_TOKEN);
 const TELEGRAM_DELETE_WEBHOOK_ON_POLLING = process.env.TELEGRAM_DELETE_WEBHOOK_ON_POLLING === "true";
-const TELEGRAM_ADMIN_LOGIN = process.env.TELEGRAM_ADMIN_LOGIN || "LiniyaRosta";
-const TELEGRAM_ADMIN_PASSWORD = process.env.TELEGRAM_ADMIN_PASSWORD || "";
 const TELEGRAM_OBSERVERS = new Set(
   String(process.env.TELEGRAM_OBSERVER_IDS || process.env.TELEGRAM_ADMIN_IDS || "")
     .split(",")
@@ -213,9 +211,8 @@ const server = http.createServer(async (req, res) => {
         telegramEnabled: ENABLE_TELEGRAM_BOT,
         telegramMode: TELEGRAM_BOT_MODE,
         telegramWebhookSecret: Boolean(TELEGRAM_WEBHOOK_SECRET),
-        telegramAdminPassword: Boolean(TELEGRAM_ADMIN_PASSWORD),
         telegramManagers: TELEGRAM_MANAGERS.length,
-        telegramReady: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMIN_PASSWORD && telegramManagersReady()),
+        telegramReady: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMINS.size && telegramManagersReady()),
         installerAi: Boolean(OPENAI_API_KEY),
         catalogGitHubBackup: catalogBackupEnabled(),
         setup
@@ -290,7 +287,7 @@ function telegramManagersWithPassword() {
 function setupStatus() {
   const missing = [];
   if (!TELEGRAM_BOT_TOKEN) missing.push("TELEGRAM_BOT_TOKEN");
-  if (!TELEGRAM_ADMIN_PASSWORD) missing.push("TELEGRAM_ADMIN_PASSWORD");
+  if (!TELEGRAM_ADMINS.size) missing.push("TELEGRAM_ADMIN_IDS");
   TELEGRAM_MANAGERS.forEach((manager, index) => {
     if (!manager.password) missing.push(`TELEGRAM_MANAGER_${index + 1}_PASSWORD`);
   });
@@ -1555,7 +1552,6 @@ async function handleTelegramUpdate(update) {
       : sendStartMenu(chatId, "Действие отменено.");
   }
 
-  if (state?.flow === "login") return continueLoginFlow(chatId, fromId, textValue, state);
   if (state?.flow === "manager_login") return continueManagerLoginFlow(chatId, fromId, textValue, state, message.chat);
   if (state?.flow === "product") return continueProductFlow(chatId, fromId, message, textValue, state);
   if (state?.flow === "edit_product") return continueFindProductFlow(chatId, fromId, textValue, state);
@@ -1836,36 +1832,8 @@ async function startAdminLogin(chatId, fromId) {
     return sendAdminPanel(chatId, "Вход выполнен.");
   }
 
-  setBotState(stateKey(chatId, fromId), { flow: "login", step: "login" });
-  const hint = TELEGRAM_ADMIN_PASSWORD
-    ? "Введите логин."
-    : "Пароль админ-панели не задан на сервере. Добавьте TELEGRAM_ADMIN_PASSWORD в Render Environment, затем повторите вход.";
-  return sendMessage(chatId, hint, cancelKeyboard());
-}
-
-async function continueLoginFlow(chatId, fromId, textValue, state) {
-  if (!TELEGRAM_ADMIN_PASSWORD) {
-    deleteBotState(stateKey(chatId, fromId));
-    return sendStartMenu(chatId, "Админ-пароль не настроен на сервере.");
-  }
-
-  if (state.step === "login") {
-    if (textValue !== TELEGRAM_ADMIN_LOGIN) {
-      return sendMessage(chatId, "Логин неверный. Попробуйте еще раз или нажмите /cancel.", cancelKeyboard());
-    }
-    state.step = "password";
-    persistBotState();
-    return sendMessage(chatId, "Введите пароль.", cancelKeyboard());
-  }
-
-  if (state.step === "password") {
-    if (textValue !== TELEGRAM_ADMIN_PASSWORD) {
-      return sendMessage(chatId, "Пароль неверный. Попробуйте еще раз или нажмите /cancel.", cancelKeyboard());
-    }
-    deleteBotState(stateKey(chatId, fromId));
-    markAdminSession(fromId, chatId);
-    return sendAdminPanel(chatId, "Вход выполнен.");
-  }
+  deleteBotState(stateKey(chatId, fromId));
+  return sendStartMenu(chatId, "Нет доступа к админ-панели. Добавьте ваш Telegram ID в TELEGRAM_ADMIN_IDS.");
 }
 
 async function logoutAdmin(chatId, fromId) {

@@ -55,15 +55,15 @@ TELEGRAM_DELETE_WEBHOOK_ON_POLLING=false
 
 Когда клиент оформляет корзину или заявку на замер, заказ сохраняется в `data/orders.json` и отправляется владельцу в Telegram. Статусы: новый, принят, в работе, доставлен, отменен.
 
-Логин и пароль админ-панели задаются через переменные окружения:
+Админ-панель открывается без логина и пароля. Доступ получает только Telegram ID,
+который указан в переменной окружения:
 
 ```env
-TELEGRAM_ADMIN_LOGIN=LiniyaRosta
-TELEGRAM_ADMIN_PASSWORD=ваш_пароль
+TELEGRAM_ADMIN_IDS=ваш_telegram_id
 TELEGRAM_ADMIN_SESSION_HOURS=12
 ```
 
-Пароль не хранить в GitHub.
+Если нужно несколько админов, укажите ID через запятую.
 
 ## Менеджеры заявок на расчет
 
@@ -203,8 +203,6 @@ ENABLE_TELEGRAM_BOT=true
 TELEGRAM_BOT_MODE=webhook
 TELEGRAM_ADMIN_IDS=8906052538
 TELEGRAM_OBSERVER_IDS=8906052538
-TELEGRAM_ADMIN_LOGIN=LiniyaRosta
-TELEGRAM_ADMIN_PASSWORD=пароль_админки
 TELEGRAM_ADMIN_SESSION_HOURS=12
 TELEGRAM_MANAGER_SESSION_HOURS=12
 TELEGRAM_MANAGER_1_NAME=Катерина
