@@ -45,6 +45,9 @@ const MAX_JSON_BODY_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_JSON_BO
 const COMPANY_WHATSAPP = process.env.COMPANY_WHATSAPP || "996990883883";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_INSTALLER_AI_MODEL = process.env.OPENAI_INSTALLER_AI_MODEL || "gpt-5.6";
+const INSTALLER_SKETCH_WIDTH = 640;
+const INSTALLER_SKETCH_HEIGHT = 1040;
+const INSTALLER_SKETCH_MARGIN = 28;
 const GITHUB_CATALOG_SYNC_TOKEN =
   process.env.GITHUB_CATALOG_SYNC_TOKEN || process.env.CATALOG_GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || "";
 const GITHUB_CATALOG_SYNC_REPO = process.env.GITHUB_CATALOG_SYNC_REPO || "LIniya-rossta/liniya-rosta-store";
@@ -515,9 +518,13 @@ async function createOrder(payload) {
     });
   }
 
-  const area = type === "measurement" ? clampNumber(payload.area, 50, 100000) : null;
-  if (type === "measurement" && area < 50) {
-    throw publicError(400, "Онлайн-заявка на замер доступна от 50 м²");
+  let area = null;
+  if (type === "measurement") {
+    const requestedArea = Number(String(payload.area || "").replace(",", "."));
+    if (!Number.isFinite(requestedArea) || requestedArea < 50) {
+      throw publicError(400, "Онлайн-заявка на замер доступна от 50 м²");
+    }
+    area = clampDecimal(requestedArea, 50, 100000);
   }
 
   const fulfillment = {
@@ -667,7 +674,7 @@ async function createInstallerAiDraft(payload) {
                 "Твоя задача: по фото чертежа вернуть машинный черновик контура полотна.",
                 "Определи форму потолка, точки по часовой стрелке, размеры сторон, диагонали, отверстия под трубы/люстру/светильники и короткие предупреждения.",
                 "Все размеры возвращай в МЕТРАХ. Если на фото написано 345 см, верни 3.45.",
-                "Координаты точек и отверстий нормализуй в поле 640x420: x от 28 до 612, y от 28 до 392.",
+                `Координаты точек и отверстий нормализуй в поле ${INSTALLER_SKETCH_WIDTH}x${INSTALLER_SKETCH_HEIGHT}: x от ${INSTALLER_SKETCH_MARGIN} до ${INSTALLER_SKETCH_WIDTH - INSTALLER_SKETCH_MARGIN}, y от ${INSTALLER_SKETCH_MARGIN} до ${INSTALLER_SKETCH_HEIGHT - INSTALLER_SKETCH_MARGIN}.`,
                 "Не выдумывай размеры, которые не видишь. Если размер не читается, не добавляй его и напиши предупреждение.",
                 "Для Г-образной формы используй отдельные точки на каждом углу выреза."
               ].join(" ")
@@ -724,8 +731,8 @@ function cleanInstallerSketch(sketch) {
   const rawPoints = Array.isArray(sketch.points) ? sketch.points : [];
   const points = rawPoints.slice(0, 24).map((point, index) => ({
     label: trimText(point.label, 8) || String.fromCharCode(65 + index),
-    x: clampDecimal(point.x, 0, 640),
-    y: clampDecimal(point.y, 0, 420)
+    x: clampDecimal(point.x, 0, INSTALLER_SKETCH_WIDTH),
+    y: clampDecimal(point.y, 0, INSTALLER_SKETCH_HEIGHT)
   }));
   const edges = installerSketchEdges(points);
   const diagonals = installerSketchDiagonals(points);
@@ -795,8 +802,8 @@ function cleanInstallerSketchHoles(source) {
   return source.slice(0, 40).map((hole, index) => ({
     type: ["pipe", "lamp", "spot", "other"].includes(hole.type) ? hole.type : "other",
     label: trimText(hole.label, 60) || `Точка ${index + 1}`,
-    x: clampDecimal(hole.x, 0, 640),
-    y: clampDecimal(hole.y, 0, 420),
+    x: clampDecimal(hole.x, 0, INSTALLER_SKETCH_WIDTH),
+    y: clampDecimal(hole.y, 0, INSTALLER_SKETCH_HEIGHT),
     diameterCm: clampDecimal(hole.diameterCm, 0, 1000)
   }));
 }
@@ -917,8 +924,8 @@ function normalizeInstallerAiDraft(raw) {
   const points = Array.isArray(raw.points)
     ? raw.points.slice(0, 24).map((point, index) => ({
         label: trimText(point.label, 8) || String.fromCharCode(65 + index),
-        x: clampDecimal(point.x, 28, 612),
-        y: clampDecimal(point.y, 28, 392)
+        x: clampDecimal(point.x, INSTALLER_SKETCH_MARGIN, INSTALLER_SKETCH_WIDTH - INSTALLER_SKETCH_MARGIN),
+        y: clampDecimal(point.y, INSTALLER_SKETCH_MARGIN, INSTALLER_SKETCH_HEIGHT - INSTALLER_SKETCH_MARGIN)
       }))
     : [];
   relabelPoints(points);
@@ -1039,8 +1046,8 @@ function installerSketchSvg(request) {
   const edges = installerSketchEdges(renderPoints);
   const diagonalItems = installerSketchDiagonals(renderPoints).filter((diagonal) => diagonals[diagonal.key]);
   const dimensionRows = [
-    ...edges.map((edge) => `${edge.key}: ${formatQty(dimensions[edge.key])} м`),
-    ...diagonalItems.map((diagonal) => `${diagonal.key}: ${formatQty(diagonals[diagonal.key])} м`),
+    ...edges.map((edge) => `${edge.key}: ${formatMeasure(dimensions[edge.key])} м`),
+    ...diagonalItems.map((diagonal) => `${diagonal.key}: ${formatMeasure(diagonals[diagonal.key])} м`),
     ...holes.map((hole) => `${holeLabel(hole)}: ${Math.round(hole.x)},${Math.round(hole.y)}`)
   ];
 
@@ -1065,8 +1072,8 @@ function installerSketchSvg(request) {
     ${renderPoints.length >= 3 ? `<polygon points="${pointString}" fill="#63e6ff" fill-opacity="0.11" stroke="none"/>` : ""}
     ${diagonalItems.map((diagonal) => `<line x1="${diagonal.from.x}" y1="${diagonal.from.y}" x2="${diagonal.to.x}" y2="${diagonal.to.y}" stroke="#f3dca8" stroke-opacity="0.48" stroke-width="2" stroke-dasharray="10 8"/>`).join("")}
     ${renderPoints.length >= 2 ? `<polyline points="${pointString}${renderPoints.length >= 3 ? ` ${renderPoints[0].x},${renderPoints[0].y}` : ""}" fill="none" stroke="url(#line)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>` : ""}
-    ${edges.map((edge) => svgDimensionLabel(edge.midpoint, `${edge.key}: ${formatQty(dimensions[edge.key])} м`)).join("")}
-    ${diagonalItems.map((diagonal) => svgDimensionLabel(diagonal.midpoint, `${diagonal.key}: ${formatQty(diagonals[diagonal.key])} м`, true)).join("")}
+    ${edges.map((edge) => svgDimensionLabel(edge.midpoint, `${edge.key}: ${formatMeasure(dimensions[edge.key])} м`)).join("")}
+    ${diagonalItems.map((diagonal) => svgDimensionLabel(diagonal.midpoint, `${diagonal.key}: ${formatMeasure(diagonals[diagonal.key])} м`, true)).join("")}
     ${renderHoles.map((hole) => svgHoleMarker(hole)).join("")}
     ${renderPoints.map((point) => `
       <circle cx="${point.x}" cy="${point.y}" r="14" fill="#07111a" stroke="#f3dca8" stroke-width="4"/>
@@ -1397,6 +1404,14 @@ function isMeasuredUnit(unit) {
 function formatQty(value) {
   const number = Number(value || 0);
   return Number.isInteger(number) ? String(number) : String(Math.round(number * 10) / 10).replace(".", ",");
+}
+
+function formatMeasure(value, precision = 2) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return "0";
+  const factor = 10 ** precision;
+  const rounded = Math.round(number * factor) / factor;
+  return rounded.toFixed(precision).replace(/\.?0+$/, "").replace(".", ",");
 }
 
 function makeOrderId(orders = []) {
@@ -2385,7 +2400,7 @@ function formatOrder(order) {
       "Получение",
       `Способ: ${method}`,
       readyText ? `Готовность: ${readyText}` : "",
-      order.area ? `Площадь: ${formatQty(order.area)} м²` : "",
+      order.area ? `Площадь: ${formatMeasure(order.area)} м²` : "",
       `Оплата: ${payment}`
     ],
     items.length
@@ -2414,15 +2429,15 @@ function formatOrderItem(item, index) {
 }
 
 function formatInstallerSketchSection(sketch, index, drawingUrl) {
-  const dimensionLines = Object.entries(sketch.dimensions || {}).map(([key, value]) => `${key}: ${formatQty(value)} м`);
-  const diagonalLines = Object.entries(sketch.diagonals || {}).map(([key, value]) => `${key}: ${formatQty(value)} м`);
+  const dimensionLines = Object.entries(sketch.dimensions || {}).map(([key, value]) => `${key}: ${formatMeasure(value)} м`);
+  const diagonalLines = Object.entries(sketch.diagonals || {}).map(([key, value]) => `${key}: ${formatMeasure(value)} м`);
   const holeLines = (sketch.holes || []).map((hole, holeIndex) => `${holeIndex + 1}. ${holeLabel(hole)} (${Math.round(hole.x)}, ${Math.round(hole.y)})`);
   const warningLines = (sketch.warnings || []).map((warning) => `- ${warning}`);
   return [
     `Чертеж ${index + 1}: ${sketch.title || `Полотно ${index + 1}`}`,
     `Точек: ${Array.isArray(sketch.points) ? sketch.points.length : 0}`,
-    sketch.area ? `Площадь: ${formatQty(sketch.area)} м²` : "",
-    sketch.perimeter ? `Периметр: ${formatQty(sketch.perimeter)} м` : "",
+    sketch.area ? `Площадь: ${formatMeasure(sketch.area)} м²` : "",
+    sketch.perimeter ? `Периметр: ${formatMeasure(sketch.perimeter)} м` : "",
     dimensionLines.length ? `Стороны:\n${dimensionLines.join("\n")}` : "",
     diagonalLines.length ? `Диагонали:\n${diagonalLines.join("\n")}` : "",
     holeLines.length ? `Отверстия:\n${holeLines.join("\n")}` : "",
@@ -2479,8 +2494,8 @@ function formatInstallerRequest(request) {
       "Объект",
       `Адрес: ${object.address || "не указан"}`,
       `Чертежей: ${sketches.length}`,
-      object.area ? `Площадь: ${formatQty(object.area)} м²` : "",
-      object.perimeter ? `Периметр: ${formatQty(object.perimeter)} м` : ""
+      object.area ? `Площадь: ${formatMeasure(object.area)} м²` : "",
+      object.perimeter ? `Периметр: ${formatMeasure(object.perimeter)} м` : ""
     ],
     [
       "Получение",
