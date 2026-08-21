@@ -16,7 +16,12 @@ const SEEDED_PRODUCTS_FILE = path.join(ROOT, "data", "products.json");
 const PORT = Number(process.env.PORT || 4177);
 const RENDER_BASE_URL =
   process.env.RENDER_EXTERNAL_URL || (process.env.RENDER_EXTERNAL_HOSTNAME ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME}` : "");
-const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || RENDER_BASE_URL || `http://localhost:${PORT}`;
+const RAILWAY_BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "";
+const HOSTED_BASE_URL = RENDER_BASE_URL || RAILWAY_BASE_URL;
+const IS_HOSTED_RUNTIME = Boolean(
+  HOSTED_BASE_URL || process.env.RENDER || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_SERVICE_ID
+);
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || HOSTED_BASE_URL || `http://localhost:${PORT}`;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const TELEGRAM_ADMINS = new Set(
   String(process.env.TELEGRAM_ADMIN_IDS || "")
@@ -259,7 +264,7 @@ function deriveTelegramSecret(token) {
 }
 
 function getTelegramManagers() {
-  const localDemoPasswords = !RENDER_BASE_URL && process.env.ENABLE_LOCAL_MANAGER_DEMO_PASSWORDS !== "false";
+  const localDemoPasswords = !IS_HOSTED_RUNTIME && process.env.ENABLE_LOCAL_MANAGER_DEMO_PASSWORDS !== "false";
   const configured = [1, 2, 3, 4]
     .map((index) => {
       const fallback = DEFAULT_TELEGRAM_MANAGERS[index - 1] || { id: `manager-${index}`, name: `Менеджер ${index}` };
