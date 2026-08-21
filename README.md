@@ -104,10 +104,10 @@ TELEGRAM_MANAGER_4_PASSWORD=указать в Render Environment
 
 ```env
 OPENAI_API_KEY=ваш_openai_api_key
-OPENAI_INSTALLER_AI_MODEL=gpt-5.6
+OPENAI_INSTALLER_AI_MODEL=gpt-4o-mini
 ```
 
-Если `OPENAI_API_KEY` не задан, сайт честно покажет, что AI не подключен. После добавления ключа в Render нужно сделать redeploy.
+Если `OPENAI_API_KEY` не задан, сайт честно покажет, что AI не подключен. После добавления ключа в Railway/Render нужно сделать redeploy.
 
 Проверка настройки:
 
@@ -216,7 +216,7 @@ TELEGRAM_MANAGER_4_PASSWORD=пароль_менеджера_4
 TELEGRAM_BOT_TOKEN=новый_токен_из_BotFather
 TELEGRAM_WEBHOOK_SECRET=любая_длинная_случайная_строка
 OPENAI_API_KEY=ваш_openai_api_key
-OPENAI_INSTALLER_AI_MODEL=gpt-5.6
+OPENAI_INSTALLER_AI_MODEL=gpt-4o-mini
 GITHUB_CATALOG_SYNC_TOKEN=github_fine_grained_token
 GITHUB_CATALOG_SYNC_REPO=LIniya-rossta/liniya-rosta-store
 GITHUB_CATALOG_SYNC_BRANCH=main

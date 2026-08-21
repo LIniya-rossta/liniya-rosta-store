@@ -44,7 +44,7 @@ const MANAGER_SESSION_MS = Math.max(1, Number(process.env.TELEGRAM_MANAGER_SESSI
 const MAX_JSON_BODY_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_JSON_BODY_MB || 5) * 1024 * 1024);
 const COMPANY_WHATSAPP = process.env.COMPANY_WHATSAPP || "996990883883";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const OPENAI_INSTALLER_AI_MODEL = process.env.OPENAI_INSTALLER_AI_MODEL || "gpt-5.6";
+const OPENAI_INSTALLER_AI_MODEL = process.env.OPENAI_INSTALLER_AI_MODEL || "gpt-4o-mini";
 const INSTALLER_SKETCH_WIDTH = 640;
 const INSTALLER_SKETCH_HEIGHT = 1040;
 const INSTALLER_SKETCH_MARGIN = 28;
@@ -652,7 +652,7 @@ async function createInstallerAiDraft(payload) {
   if (!photo.dataUrl) throw publicError(400, "Прикрепите фото чертежа");
   validateInstallerPhotoDataUrl(photo.dataUrl);
   if (!OPENAI_API_KEY) {
-    throw publicError(501, "AI-распознавание не подключено. Добавьте OPENAI_API_KEY в Render Environment или локальный .env.");
+    throw publicError(501, "AI-распознавание не подключено. Добавьте OPENAI_API_KEY в Railway Environment или локальный .env.");
   }
 
   const response = await fetch("https://api.openai.com/v1/responses", {
