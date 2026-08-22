@@ -45,6 +45,7 @@ const MAX_JSON_BODY_BYTES = Math.max(1024 * 1024, Number(process.env.MAX_JSON_BO
 const COMPANY_WHATSAPP = process.env.COMPANY_WHATSAPP || "996990883883";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_INSTALLER_AI_MODEL = process.env.OPENAI_INSTALLER_AI_MODEL || "gpt-4o-mini";
+const LEGAL_VERSION = "2026-08-22";
 const INSTALLER_SKETCH_WIDTH = 640;
 const INSTALLER_SKETCH_HEIGHT = 1040;
 const INSTALLER_SKETCH_MARGIN = 28;
@@ -487,6 +488,10 @@ async function readBody(req) {
 async function createOrder(payload) {
   const type = payload.type === "measurement" ? "measurement" : "cart";
   const customer = cleanCustomer(payload.customer || {});
+  const consent = cleanLegalConsent(payload.consent || {});
+  if (!consent.personalData) {
+    throw publicError(400, "Необходимо согласие на обработку данных");
+  }
   const products = getCatalogProducts(await readJson(PRODUCTS_FILE, []));
   const activeProducts = new Map(
     products.filter((product) => product.active !== false).map((product) => [product.id, product])
@@ -558,6 +563,7 @@ async function createOrder(payload) {
     total,
     area,
     fulfillment,
+    consent,
     comment: trimText(payload.comment, 1000),
     source: "site",
     createdAt: new Date().toISOString(),
@@ -570,6 +576,10 @@ async function createOrder(payload) {
 }
 
 async function createInstallerRequest(payload) {
+  const consent = cleanLegalConsent(payload.consent || {});
+  if (!consent.personalData) {
+    throw publicError(400, "Необходимо согласие на обработку данных");
+  }
   const manager = TELEGRAM_MANAGERS.find((item) => item.id === trimText(payload.managerId, 80));
   if (!manager) throw publicError(400, "Выберите менеджера");
 
@@ -633,6 +643,7 @@ async function createInstallerRequest(payload) {
     extraItems,
     object,
     fulfillment,
+    consent,
     sketch,
     sketches,
     sketchPhoto: photo,
@@ -1229,6 +1240,22 @@ function cleanCustomer(customer) {
     name,
     phone,
     address
+  };
+}
+
+function cleanLegalConsent(consent) {
+  const acceptedAt = trimText(consent.acceptedAt, 40);
+  const acceptedTime = Date.parse(acceptedAt);
+  const documents = Array.isArray(consent.documents)
+    ? consent.documents.map((item) => trimText(item, 40)).filter(Boolean).slice(0, 6)
+    : [];
+
+  return {
+    personalData: consent.personalData === true || consent.personalData === "true",
+    version: trimText(consent.version, 40) || LEGAL_VERSION,
+    context: trimText(consent.context, 40),
+    acceptedAt: Number.isFinite(acceptedTime) ? new Date(acceptedTime).toISOString() : new Date().toISOString(),
+    documents: documents.length ? documents : ["privacy", "terms", "data-consent"]
   };
 }
 

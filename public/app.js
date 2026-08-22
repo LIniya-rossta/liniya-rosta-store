@@ -1,6 +1,8 @@
-const routes = new Set(["/", "/catalog", "/cart", "/checkout", "/success", "/measure", "/installer"]);
+const routes = new Set(["/", "/catalog", "/cart", "/checkout", "/success", "/measure", "/installer", "/privacy", "/terms", "/data-consent"]);
 const money = new Intl.NumberFormat("ru-RU");
 const KYRGYZ_TIME_ZONE = "Asia/Bishkek";
+const LEGAL_VERSION = "2026-08-22";
+const LEGAL_UPDATED_LABEL = "22 августа 2026";
 const defaultManagers = [
   { id: "manager-1", name: "Катерина" },
   { id: "manager-2", name: "Тая" },
@@ -177,6 +179,11 @@ function renderRoute() {
   if (route === "/success") renderSuccess();
   if (route === "/measure") renderMeasure();
   if (route === "/installer") renderInstaller();
+  if (route === "/privacy") renderPrivacyPolicy();
+  if (route === "/terms") renderTerms();
+  if (route === "/data-consent") renderDataConsent();
+
+  appendLegalFooter();
 
   requestAnimationFrame(() => {
     observeReveal();
@@ -340,6 +347,7 @@ function renderCheckout() {
           </div>
 
           <label class="full"><span>Комментарий</span><textarea name="comment" rows="4" placeholder="Этаж, подъезд, удобное время, вопросы"></textarea></label>
+          ${legalConsentTemplate("checkout")}
           <button class="btn btn-primary full" type="submit" ${lines.length ? "" : "disabled"}>Оформить заказ</button>
           <p class="form-note full" id="checkoutNote">${lines.length ? "" : "Корзина пустая. Добавьте товары в каталоге."}</p>
         </form>
@@ -374,6 +382,7 @@ function renderMeasure() {
           <label><span>Адрес объекта</span><input name="address" required autocomplete="street-address" placeholder="Район, улица, дом"></label>
           <label><span>Площадь, м²</span><input name="area" required type="number" min="50" value="50"></label>
           <label class="full"><span>Комментарий</span><textarea name="comment" rows="4" placeholder="Что рассчитать: потолок, пол, свет, стены"></textarea></label>
+          ${legalConsentTemplate("measure")}
           <button class="btn btn-primary full" type="submit">Отправить заявку</button>
           <p class="form-note full" id="measureNote"></p>
         </form>
@@ -498,6 +507,7 @@ function renderInstaller() {
           </div>
 
           <label class="full"><span>Комментарий</span><textarea name="comment" rows="4" placeholder="Ниши, трубы, углы, пожелания по доставке">${escapeHtml(draftForm.comment || "")}</textarea></label>
+          ${legalConsentTemplate("installer")}
           <div class="installer-form-actions full">
             <button class="btn btn-soft" type="button" data-save-installer-draft>${state.activeInstallerDraftId ? "Обновить расчет в корзине" : "Сохранить расчет в корзине"}</button>
             <button class="btn btn-primary" type="submit">Отправить на расчет</button>
@@ -549,6 +559,130 @@ function renderSuccess() {
           <a class="btn btn-primary" href="/catalog" data-link>Вернуться в каталог</a>
           <a class="btn btn-soft" href="/" data-link>На главную</a>
         </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderPrivacyPolicy() {
+  elements.app.innerHTML = `
+    <section class="legal-page page-section">
+      <div class="legal-hero reveal">
+        <span class="overline">Документы</span>
+        <h1>Политика конфиденциальности</h1>
+        <p>Как Линия Роста собирает, использует и защищает данные клиентов при заказах, замерах и заявках на просчет потолка.</p>
+        <span class="legal-version">Редакция: ${LEGAL_UPDATED_LABEL}</span>
+      </div>
+
+      <div class="legal-card reveal">
+        ${legalSection("1. Кто обрабатывает данные", [
+          "Оператор сайта: Линия Роста, шоурум по адресу Куренкеева 49, Бишкек.",
+          `Контакт для вопросов по данным: WhatsApp <a href="${whatsAppLink("Здравствуйте! Хочу задать вопрос по персональным данным на сайте Линия Роста.")}" target="_blank" rel="noreferrer">+996 990 883 883</a>.`
+        ])}
+        ${legalSection("2. Какие данные мы получаем", [
+          "Имя, телефон, адрес доставки или адрес объекта, комментарии к заказу, выбранные товары, количество, дату и время готовности.",
+          "Для страницы визуализации и просчета потолка: контур чертежа, размеры сторон, площадь, периметр, выбранный материал, дополнительные товары, фото или файл чертежа, если вы его загрузили.",
+          "Технические данные сайта: адрес страницы, время отправки заявки, базовые данные браузера, необходимые для работы сервиса и защиты от ошибок."
+        ])}
+        ${legalSection("3. Зачем нужны данные", [
+          "Чтобы принять заказ, связаться с клиентом, уточнить наличие и цену, оформить доставку или самовывоз, передать заявку выбранному менеджеру и подготовить расчет.",
+          "Чтобы сохранить черновик расчета в корзине на устройстве клиента, если клиент сам нажал сохранение.",
+          "Чтобы улучшать работу каталога, корзины, визуализации потолка и Telegram-уведомлений."
+        ])}
+        ${legalSection("4. Передача данных", [
+          "Данные заявок могут передаваться администраторам и менеджерам Линии Роста через Telegram-бота, а также использоваться при общении с клиентом через WhatsApp, если клиент сам выбрал этот канал.",
+          "Сайт размещается на облачной инфраструктуре. Данные могут технически храниться и обрабатываться сервисами хостинга, которые нужны для работы сайта.",
+          "Если клиент использует распознавание фото чертежа, изображение может быть отправлено в AI-сервис для построения предварительного контура. Не загружайте документы, не относящиеся к расчету."
+        ])}
+        ${legalSection("5. Срок хранения и защита", [
+          "Данные хранятся столько, сколько нужно для обработки заявки, учета заказов, поддержки клиента и защиты интересов сторон.",
+          "Мы ограничиваем доступ к данным и используем их только для работы магазина, расчета, связи с клиентом и выполнения заявки.",
+          "Клиент может запросить уточнение, исправление или удаление своих данных через WhatsApp компании."
+        ])}
+        ${legalSection("6. Согласие и отзыв", [
+          "Отправляя форму на сайте, клиент подтверждает согласие с этой политикой и согласием на обработку и передачу данных.",
+          "Согласие можно отозвать, написав компании. После отзыва часть данных может сохраняться, если это нужно для уже оформленной заявки, бухгалтерского учета, безопасности или требований закона."
+        ])}
+      </div>
+    </section>
+  `;
+}
+
+function renderTerms() {
+  elements.app.innerHTML = `
+    <section class="legal-page page-section">
+      <div class="legal-hero reveal">
+        <span class="overline">Документы</span>
+        <h1>Пользовательское соглашение</h1>
+        <p>Правила использования каталога, корзины, онлайн-замера и визуализации потолка на сайте Линия Роста.</p>
+        <span class="legal-version">Редакция: ${LEGAL_UPDATED_LABEL}</span>
+      </div>
+
+      <div class="legal-card reveal">
+        ${legalSection("1. Статус сайта", [
+          "Сайт помогает выбрать товары, отправить заказ, заявку на замер или заявку на просчет потолка.",
+          "Информация в каталоге не является окончательной публичной офертой. Наличие, итоговая цена, доставка, сроки и установка подтверждаются менеджером после связи с клиентом."
+        ])}
+        ${legalSection("2. Каталог и цены", [
+          "Цены в каталоге указаны без учета установки, если рядом с товаром не указано другое.",
+          "Для товаров с ценой по запросу менеджер уточняет итоговую стоимость после обработки заявки.",
+          "Клиент отвечает за корректность выбранного количества, единицы измерения и контактных данных."
+        ])}
+        ${legalSection("3. Заказы, доставка и самовывоз", [
+          "Заявка считается принятой в обработку после отправки формы на сайте, но заказ считается согласованным после подтверждения менеджером.",
+          "Дата и время готовности на сайте указываются для планирования и могут быть уточнены менеджером.",
+          "При выборе самовывоза адрес доставки не требуется. При выборе доставки клиент обязан указать адрес."
+        ])}
+        ${legalSection("4. Визуализация и просчет потолка", [
+          "Чертеж, построенный на сайте или распознанный по фото, является предварительным инструментом для расчета.",
+          "AI-распознавание может ошибаться. Перед производством и монтажом размеры, контур, трубы, люстры, точки и материал должны быть проверены человеком.",
+          "Клиент подтверждает, что загружает только материалы, относящиеся к заявке, и имеет право передать их для расчета."
+        ])}
+        ${legalSection("5. Ограничение ответственности", [
+          "Линия Роста не отвечает за ошибки, возникшие из-за неверно указанных размеров, адреса, номера телефона, выбранного материала или комментариев клиента.",
+          "Сайт может временно быть недоступен из-за обновлений, технических работ или работы внешних сервисов."
+        ])}
+        ${legalSection("6. Документы и согласия", [
+          `Используя сайт и отправляя формы, клиент принимает <a href="/privacy" data-link>политику конфиденциальности</a> и <a href="/data-consent" data-link>согласие на обработку и передачу данных</a>.`,
+          "Если клиент не согласен с документами, он не должен отправлять формы на сайте."
+        ])}
+      </div>
+    </section>
+  `;
+}
+
+function renderDataConsent() {
+  elements.app.innerHTML = `
+    <section class="legal-page page-section">
+      <div class="legal-hero reveal">
+        <span class="overline">Документы</span>
+        <h1>Согласие на обработку и передачу данных</h1>
+        <p>Документ описывает согласие клиента на использование данных для заказа, замера, визуализации и связи с менеджером.</p>
+        <span class="legal-version">Редакция: ${LEGAL_UPDATED_LABEL}</span>
+      </div>
+
+      <div class="legal-card reveal">
+        ${legalSection("1. Что подтверждает клиент", [
+          "Клиент добровольно предоставляет данные через формы сайта и подтверждает, что данные точные и актуальные.",
+          "Клиент разрешает Линии Роста собирать, записывать, хранить, уточнять, использовать, передавать менеджерам, обезличивать и удалять данные в целях обработки заявки."
+        ])}
+        ${legalSection("2. Какие данные входят в согласие", [
+          "Имя, телефон, адрес, комментарий, выбранные товары, количество, дата и время готовности, способ получения.",
+          "Для визуализации потолка: чертеж, размеры, площадь, периметр, фото чертежа, выбранное полотно, дополнительные товары и выбранный менеджер."
+        ])}
+        ${legalSection("3. Кому могут передаваться данные", [
+          "Администраторам и менеджерам Линии Роста, которые обрабатывают заказы и заявки.",
+          "Техническим сервисам, без которых сайт и уведомления не работают: хостинг, Telegram-бот, WhatsApp-связь, AI-распознавание фото при использовании этой функции.",
+          "Данные не продаются третьим лицам и не используются для чужой рекламы."
+        ])}
+        ${legalSection("4. Срок действия согласия", [
+          "Согласие действует с момента отправки формы и до достижения целей обработки либо до отзыва согласия клиентом.",
+          "Чтобы отозвать согласие, нужно написать в WhatsApp компании. Отзыв не отменяет обработку, которая уже была выполнена законно до момента отзыва."
+        ])}
+        ${legalSection("5. Принятие", [
+          "Отметка чекбокса в форме и отправка заявки считаются подтверждением согласия.",
+          `Актуальная политика конфиденциальности доступна на странице <a href="/privacy" data-link>/privacy</a>, пользовательское соглашение — на странице <a href="/terms" data-link>/terms</a>.`
+        ])}
       </div>
     </section>
   `;
@@ -781,6 +915,65 @@ function contactsSection() {
       <div class="map-shell reveal">
         <iframe title="Карта Линия Роста" src="https://www.openstreetmap.org/export/embed.html?bbox=74.618804%2C42.887143%2C74.628804%2C42.893143&layer=mapnik&marker=42.890143%2C74.623804" loading="lazy"></iframe>
       </div>
+    </section>
+  `;
+}
+
+function appendLegalFooter() {
+  elements.app.insertAdjacentHTML("beforeend", siteLegalFooter());
+}
+
+function siteLegalFooter() {
+  return `
+    <footer class="site-legal-footer">
+      <span>Линия Роста · Бишкек, Куренкеева 49</span>
+      <nav aria-label="Юридические документы">
+        <a href="/privacy" data-link>Политика конфиденциальности</a>
+        <a href="/terms" data-link>Пользовательское соглашение</a>
+        <a href="/data-consent" data-link>Согласие на обработку данных</a>
+      </nav>
+    </footer>
+  `;
+}
+
+function legalConsentTemplate(context) {
+  const text = context === "installer"
+    ? "Я согласен на обработку и передачу данных, включая чертежи, фото и параметры потолка, для подготовки расчета."
+    : "Я согласен на обработку и передачу данных для обработки заявки и связи со мной.";
+  return `
+    <label class="legal-consent full">
+      <input type="checkbox" name="personalConsent" value="yes" required>
+      <span>
+        ${text}
+        <small>
+          Принимаю <a href="/privacy" data-link>политику конфиденциальности</a>,
+          <a href="/terms" data-link>пользовательское соглашение</a> и
+          <a href="/data-consent" data-link>согласие на обработку данных</a>.
+        </small>
+      </span>
+    </label>
+  `;
+}
+
+function legalConsentPayload(context) {
+  return {
+    personalData: true,
+    version: LEGAL_VERSION,
+    context,
+    acceptedAt: new Date().toISOString(),
+    documents: ["privacy", "terms", "data-consent"]
+  };
+}
+
+function hasAcceptedLegalConsent(form) {
+  return form.get("personalConsent") === "yes";
+}
+
+function legalSection(title, paragraphs) {
+  return `
+    <section class="legal-section">
+      <h2>${escapeHtml(title)}</h2>
+      ${paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join("")}
     </section>
   `;
 }
@@ -2753,6 +2946,7 @@ async function submitCheckout(event) {
   const method = form.get("method");
   const readyDate = form.get("readyDate");
   const readyTime = form.get("readyTime");
+  if (!hasAcceptedLegalConsent(form)) return setNote(note, "Подтвердите согласие на обработку данных.", true);
   if (!readyDate || !readyTime) return setNote(note, "Выберите дату и время готовности заказа.", true);
   if (isSundayDate(readyDate)) return setNote(note, "В воскресенье магазин не работает. Выберите другую дату.", true);
 
@@ -2770,6 +2964,7 @@ async function submitCheckout(event) {
       readyTime,
       timeZone: KYRGYZ_TIME_ZONE
     },
+    consent: legalConsentPayload("checkout"),
     comment: form.get("comment"),
     items: lines.map(({ product, qty }) => ({ productId: product.id, qty }))
   };
@@ -2787,6 +2982,7 @@ async function submitMeasure(event) {
   const note = document.getElementById("measureNote");
   const form = new FormData(event.currentTarget);
   const area = Number(form.get("area"));
+  if (!hasAcceptedLegalConsent(form)) return setNote(note, "Подтвердите согласие на обработку данных.", true);
   if (area < 50) return setNote(note, "Онлайн-заявка доступна от 50 м².", true);
 
   const payload = {
@@ -2798,6 +2994,7 @@ async function submitMeasure(event) {
       address: form.get("address")
     },
     fulfillment: { method: "delivery", payment: "after_call" },
+    consent: legalConsentPayload("measure"),
     comment: form.get("comment")
   };
 
@@ -2821,6 +3018,7 @@ async function submitInstallerRequest(event) {
   const objectPerimeter = measuredStats.perimeter;
   const extraItems = getInstallerExtraLines().map(({ product, qty }) => ({ productId: product.id, qty }));
 
+  if (!hasAcceptedLegalConsent(form)) return setNote(note, "Подтвердите согласие на обработку данных.", true);
   if (!materialId) return setNote(note, "Выберите материал.", true);
   if (!readyDate || !readyTime) return setNote(note, "Выберите дату и время готовности.", true);
   if (isSundayDate(readyDate)) return setNote(note, "В воскресенье магазин не работает. Выберите другую дату.", true);
@@ -2852,7 +3050,8 @@ async function submitInstallerRequest(event) {
     extraItems,
     sketch: sketches[0] || {},
     sketches,
-    sketchPhoto: state.installerPhoto
+    sketchPhoto: state.installerPhoto,
+    consent: legalConsentPayload("installer")
   };
 
   setNote(note, "Отправляем заявку менеджеру...", false);
