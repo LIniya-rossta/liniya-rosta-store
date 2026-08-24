@@ -2005,6 +2005,21 @@
     "catalogPageImage": "/uploads/catalog/page-059.jpg"
   },
   {
+    "id": "p_mt7jr5en_ujbth",
+    "title": "Царь-гардина",
+    "category": "Профиля",
+    "price": 950,
+    "unit": "пог.м",
+    "stock": "в наличии",
+    "description": "Идеально подходит для любых интерьерных решений со шторами.\nПластиковый карниз обеспечивает плавное и бесшумное скольжение штор, а также помогает создавать красивые и выразительные складки.",
+    "image": "/uploads/p_mt7jr5en_ujbth.jpg",
+    "imageFit": "cover",
+    "active": true,
+    "featured": false,
+    "createdAt": "2026-08-24T18:07:16.902Z",
+    "updatedAt": "2026-08-24T18:07:16.902Z"
+  },
+  {
     "id": "cat-062-01",
     "title": "БАГЕТ ПВХ перфорация Россия",
     "category": "Багет",
