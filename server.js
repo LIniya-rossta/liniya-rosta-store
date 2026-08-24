@@ -15,13 +15,13 @@ const SEEDED_PRODUCTS_FILE = path.join(ROOT, "data", "products.json");
 
 const PORT = Number(process.env.PORT || 4177);
 const RENDER_BASE_URL =
-  process.env.RENDER_EXTERNAL_URL || (process.env.RENDER_EXTERNAL_HOSTNAME ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME}` : "");
-const RAILWAY_BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "";
-const HOSTED_BASE_URL = RENDER_BASE_URL || RAILWAY_BASE_URL;
+  normalizeBaseUrl(process.env.RENDER_EXTERNAL_URL || (process.env.RENDER_EXTERNAL_HOSTNAME ? `https://${process.env.RENDER_EXTERNAL_HOSTNAME}` : ""));
+const RAILWAY_BASE_URL = normalizeBaseUrl(process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "");
+const HOSTED_BASE_URL = resolveHostedBaseUrl();
 const IS_HOSTED_RUNTIME = Boolean(
   HOSTED_BASE_URL || process.env.RENDER || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_SERVICE_ID
 );
-const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || HOSTED_BASE_URL || `http://localhost:${PORT}`;
+const PUBLIC_BASE_URL = resolvePublicBaseUrl();
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const TELEGRAM_ADMINS = new Set(
   String(process.env.TELEGRAM_ADMIN_IDS || "")
@@ -222,6 +222,7 @@ const server = http.createServer(async (req, res) => {
       const setup = setupStatus();
       return json(res, 200, {
         ok: true,
+        publicBaseUrl: PUBLIC_BASE_URL,
         telegramPanel: "admin-v2",
         telegram: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMIN_OPEN_ACCESS || TELEGRAM_ADMINS.size || TELEGRAM_ADMIN_USERNAMES.size || TELEGRAM_MANAGERS.length)),
         telegramEnabled: ENABLE_TELEGRAM_BOT,
@@ -1409,6 +1410,34 @@ function publicError(statusCode, publicMessage) {
   error.statusCode = statusCode;
   error.publicMessage = publicMessage;
   return error;
+}
+
+function normalizeBaseUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function isRailwayRuntime() {
+  return Boolean(process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_SERVICE_ID || process.env.RAILWAY_PROJECT_ID);
+}
+
+function isRenderRuntime() {
+  return Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID || process.env.RENDER_EXTERNAL_URL || process.env.RENDER_EXTERNAL_HOSTNAME);
+}
+
+function isRenderUrl(value) {
+  return /\.onrender\.com(?:\/|$)/i.test(String(value || ""));
+}
+
+function resolveHostedBaseUrl() {
+  if (isRailwayRuntime()) return RAILWAY_BASE_URL || RENDER_BASE_URL;
+  if (isRenderRuntime()) return RENDER_BASE_URL || RAILWAY_BASE_URL;
+  return RENDER_BASE_URL || RAILWAY_BASE_URL;
+}
+
+function resolvePublicBaseUrl() {
+  const explicitUrl = normalizeBaseUrl(process.env.PUBLIC_BASE_URL);
+  if (isRailwayRuntime() && RAILWAY_BASE_URL && isRenderUrl(explicitUrl)) return RAILWAY_BASE_URL;
+  return explicitUrl || HOSTED_BASE_URL || `http://localhost:${PORT}`;
 }
 
 function normalizeTelegramUsername(value) {

@@ -134,6 +134,14 @@ TELEGRAM_BOT_MODE=webhook
 TELEGRAM_WEBHOOK_SECRET=случайная_длинная_строка
 ```
 
+На Railway временно используйте рабочий домен Railway, пока `www.liniyarosta.com` не резолвится:
+
+```env
+PUBLIC_BASE_URL=https://liniya-rosta-store.up.railway.app
+```
+
+Не оставляйте старый адрес `onrender.com` в `PUBLIC_BASE_URL`, иначе Telegram-бот будет отправлять старые ссылки.
+
 При старте сервер сам подключит Telegram webhook на адрес:
 
 ```text
