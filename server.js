@@ -35,6 +35,7 @@ const TELEGRAM_ADMIN_USERNAMES = new Set(
     .map(normalizeTelegramUsername)
     .filter(Boolean)
 );
+const TELEGRAM_ADMIN_OPEN_ACCESS = process.env.TELEGRAM_ADMIN_OPEN_ACCESS === "true";
 const ENABLE_TELEGRAM_BOT = process.env.ENABLE_TELEGRAM_BOT !== "false";
 const TELEGRAM_BOT_MODE = process.env.TELEGRAM_BOT_MODE || (PUBLIC_BASE_URL.startsWith("https://") ? "webhook" : "polling");
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || deriveTelegramSecret(TELEGRAM_BOT_TOKEN);
@@ -222,13 +223,14 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         telegramPanel: "admin-v2",
-        telegram: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMINS.size || TELEGRAM_ADMIN_USERNAMES.size || TELEGRAM_MANAGERS.length)),
+        telegram: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMIN_OPEN_ACCESS || TELEGRAM_ADMINS.size || TELEGRAM_ADMIN_USERNAMES.size || TELEGRAM_MANAGERS.length)),
         telegramEnabled: ENABLE_TELEGRAM_BOT,
         telegramMode: TELEGRAM_BOT_MODE,
         telegramWebhookSecret: Boolean(TELEGRAM_WEBHOOK_SECRET),
+        telegramAdminOpenAccess: TELEGRAM_ADMIN_OPEN_ACCESS,
         telegramManagers: TELEGRAM_MANAGERS.length,
         telegramAdminUsernames: TELEGRAM_ADMIN_USERNAMES.size,
-        telegramReady: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMINS.size || TELEGRAM_ADMIN_USERNAMES.size) && telegramManagersReady()),
+        telegramReady: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMIN_OPEN_ACCESS || TELEGRAM_ADMINS.size || TELEGRAM_ADMIN_USERNAMES.size) && telegramManagersReady()),
         installerAi: Boolean(OPENAI_API_KEY),
         catalogGitHubBackup: catalogBackupEnabled(),
         setup
@@ -246,7 +248,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Линия Роста: http://localhost:${PORT}`);
-  if (ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMINS.size || TELEGRAM_ADMIN_USERNAMES.size || TELEGRAM_MANAGERS.length)) {
+  if (ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMIN_OPEN_ACCESS || TELEGRAM_ADMINS.size || TELEGRAM_ADMIN_USERNAMES.size || TELEGRAM_MANAGERS.length)) {
     startTelegramIntegration().catch((error) => {
       console.error("Telegram setup failed:", error.message);
     });
@@ -303,7 +305,9 @@ function telegramManagersWithPassword() {
 function setupStatus() {
   const missing = [];
   if (!TELEGRAM_BOT_TOKEN) missing.push("TELEGRAM_BOT_TOKEN");
-  if (!TELEGRAM_ADMINS.size && !TELEGRAM_ADMIN_USERNAMES.size) missing.push("TELEGRAM_ADMIN_IDS or TELEGRAM_ADMIN_USERNAMES");
+  if (!TELEGRAM_ADMIN_OPEN_ACCESS && !TELEGRAM_ADMINS.size && !TELEGRAM_ADMIN_USERNAMES.size) {
+    missing.push("TELEGRAM_ADMIN_IDS or TELEGRAM_ADMIN_USERNAMES or TELEGRAM_ADMIN_OPEN_ACCESS");
+  }
   TELEGRAM_MANAGERS.forEach((manager, index) => {
     if (!manager.password) missing.push(`TELEGRAM_MANAGER_${index + 1}_PASSWORD`);
   });
@@ -312,6 +316,7 @@ function setupStatus() {
   return {
     ready: !missing.length,
     missing,
+    adminOpenAccess: TELEGRAM_ADMIN_OPEN_ACCESS,
     adminUsernames: TELEGRAM_ADMIN_USERNAMES.size,
     managers: TELEGRAM_MANAGERS.map((manager) => ({
       id: manager.id,
@@ -1617,7 +1622,9 @@ async function handleTelegramUpdate(update) {
   if (state?.flow === "edit_product") return continueFindProductFlow(chatId, fromId, textValue, state);
   if (state?.flow === "edit_field") return continueEditFieldFlow(chatId, fromId, message, textValue, state);
 
-  if (textValue === "/start" || textValue === "Старт") return sendStartMenu(chatId);
+  if (textValue === "/start" || textValue === "Старт") {
+    return TELEGRAM_ADMIN_OPEN_ACCESS ? startAdminLogin(chatId, fromId, fromUser) : sendStartMenu(chatId);
+  }
   if (textValue === "/admin" || textValue === "Войти в админ-панель") return startAdminLogin(chatId, fromId, fromUser);
   if (textValue === "/manager" || textValue === "Менеджера") return startManagerLogin(chatId, fromId);
   if (textValue === "/watch" || textValue === "Наблюдать за заказами") return subscribeWatcher(chatId, fromId, message.chat, fromUser);
@@ -1787,6 +1794,7 @@ function isAdminSession(fromId) {
 }
 
 function isTrustedAdmin(fromId, fromUser = {}) {
+  if (TELEGRAM_ADMIN_OPEN_ACCESS) return true;
   if (fromId && TELEGRAM_ADMINS.has(fromId)) return true;
   const username = normalizeTelegramUsername(fromUser.username);
   return Boolean(username && TELEGRAM_ADMIN_USERNAMES.has(username));
@@ -1899,6 +1907,10 @@ async function startAdminLogin(chatId, fromId, fromUser = {}) {
 }
 
 async function logoutAdmin(chatId, fromId) {
+  if (TELEGRAM_ADMIN_OPEN_ACCESS) {
+    markAdminSession(fromId, chatId);
+    return sendAdminPanel(chatId, "Открытая админ-панель активна. Выход отключен.");
+  }
   deleteAdminSession(fromId);
   deleteBotState(stateKey(chatId, fromId));
   return sendStartMenu(chatId, "Вы вышли из админ-панели.");
@@ -2733,12 +2745,15 @@ async function sendAdminPanel(chatId, prefix = "Админ-панель Лини
 }
 
 function adminKeyboard() {
+  const keyboard = [
+    [{ text: "➕ Добавить товар" }, { text: "✏️ Изменить товар" }],
+    [{ text: "🧾 Последние заказы" }, { text: "📊 Сводка за неделю" }],
+    [{ text: "📦 Товары" }]
+  ];
+  if (!TELEGRAM_ADMIN_OPEN_ACCESS) keyboard[keyboard.length - 1].push({ text: "🚪 Выйти" });
+
   return {
-    keyboard: [
-      [{ text: "➕ Добавить товар" }, { text: "✏️ Изменить товар" }],
-      [{ text: "🧾 Последние заказы" }, { text: "📊 Сводка за неделю" }],
-      [{ text: "📦 Товары" }, { text: "🚪 Выйти" }]
-    ],
+    keyboard,
     resize_keyboard: true
   };
 }

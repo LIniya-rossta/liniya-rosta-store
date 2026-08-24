@@ -6,7 +6,7 @@
 
 1. Скопируйте `.env.example` в `.env`.
 2. Укажите новый `TELEGRAM_BOT_TOKEN` из BotFather.
-3. Проверьте `TELEGRAM_ADMIN_IDS=8906052538`.
+3. Для открытой админки поставьте `TELEGRAM_ADMIN_OPEN_ACCESS=true`; для закрытой укажите `TELEGRAM_ADMIN_IDS`.
 4. Запустите:
 
 ```bash
@@ -55,8 +55,14 @@ TELEGRAM_DELETE_WEBHOOK_ON_POLLING=false
 
 Когда клиент оформляет корзину или заявку на замер, заказ сохраняется в `data/orders.json` и отправляется владельцу в Telegram. Статусы: новый, принят, в работе, доставлен, отменен.
 
-Админ-панель открывается без логина и пароля. Доступ получает только Telegram ID,
-который указан в переменной окружения:
+Админ-панель открывается без логина и пароля. Если включить открытый режим,
+доступ получит любой пользователь, который напишет боту:
+
+```env
+TELEGRAM_ADMIN_OPEN_ACCESS=true
+```
+
+Для закрытого режима оставьте `TELEGRAM_ADMIN_OPEN_ACCESS=false` и укажите ID или username:
 
 ```env
 TELEGRAM_ADMIN_IDS=ваш_telegram_id
@@ -202,6 +208,7 @@ DATA_DIR=/opt/render/project/src/storage/data
 UPLOAD_DIR=/opt/render/project/src/storage/uploads
 ENABLE_TELEGRAM_BOT=true
 TELEGRAM_BOT_MODE=webhook
+TELEGRAM_ADMIN_OPEN_ACCESS=true
 TELEGRAM_ADMIN_IDS=8906052538
 TELEGRAM_ADMIN_USERNAMES=anatmerin
 TELEGRAM_OBSERVER_IDS=8906052538
