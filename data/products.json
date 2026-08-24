@@ -874,6 +874,21 @@
     "catalogPageImage": "/uploads/catalog/page-027.jpg"
   },
   {
+    "id": "p_mt6wrz2f_joy47",
+    "title": "БЕЗРАМНЫЙ СВЕТИЛЬНИК",
+    "category": "Светильники",
+    "price": 250,
+    "unit": "Шт",
+    "stock": "в наличии",
+    "description": "",
+    "image": "/uploads/p_mt6wrz2f_joy47.jpg",
+    "imageFit": "cover",
+    "active": true,
+    "featured": false,
+    "createdAt": "2026-08-24T07:25:42.194Z",
+    "updatedAt": "2026-08-24T07:25:42.194Z"
+  },
+  {
     "id": "cat-030-01",
     "title": "Натяжные обои - коллекция 1",
     "category": "Натяжные обои",
