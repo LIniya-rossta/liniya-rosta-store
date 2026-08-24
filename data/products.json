@@ -889,6 +889,21 @@
     "updatedAt": "2026-08-24T07:25:42.194Z"
   },
   {
+    "id": "p_mt6wwbef_kjfaq",
+    "title": "РАДИУСНЫЙ УГЛОВОЙ ТРЕК",
+    "category": "Светильники",
+    "price": 6000,
+    "unit": "Шт",
+    "stock": "в наличии",
+    "description": "",
+    "image": "/uploads/p_mt6wwbef_kjfaq.jpg",
+    "imageFit": "cover",
+    "active": true,
+    "featured": false,
+    "createdAt": "2026-08-24T15:22:24.424Z",
+    "updatedAt": "2026-08-24T15:22:24.424Z"
+  },
+  {
     "id": "cat-030-01",
     "title": "Натяжные обои - коллекция 1",
     "category": "Натяжные обои",
