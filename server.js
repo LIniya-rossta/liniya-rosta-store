@@ -29,6 +29,12 @@ const TELEGRAM_ADMINS = new Set(
     .map((id) => id.trim())
     .filter(Boolean)
 );
+const TELEGRAM_ADMIN_USERNAMES = new Set(
+  String(process.env.TELEGRAM_ADMIN_USERNAMES || "")
+    .split(",")
+    .map(normalizeTelegramUsername)
+    .filter(Boolean)
+);
 const ENABLE_TELEGRAM_BOT = process.env.ENABLE_TELEGRAM_BOT !== "false";
 const TELEGRAM_BOT_MODE = process.env.TELEGRAM_BOT_MODE || (PUBLIC_BASE_URL.startsWith("https://") ? "webhook" : "polling");
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || deriveTelegramSecret(TELEGRAM_BOT_TOKEN);
@@ -216,12 +222,13 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         telegramPanel: "admin-v2",
-        telegram: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMINS.size || TELEGRAM_MANAGERS.length)),
+        telegram: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMINS.size || TELEGRAM_ADMIN_USERNAMES.size || TELEGRAM_MANAGERS.length)),
         telegramEnabled: ENABLE_TELEGRAM_BOT,
         telegramMode: TELEGRAM_BOT_MODE,
         telegramWebhookSecret: Boolean(TELEGRAM_WEBHOOK_SECRET),
         telegramManagers: TELEGRAM_MANAGERS.length,
-        telegramReady: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && TELEGRAM_ADMINS.size && telegramManagersReady()),
+        telegramAdminUsernames: TELEGRAM_ADMIN_USERNAMES.size,
+        telegramReady: Boolean(ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMINS.size || TELEGRAM_ADMIN_USERNAMES.size) && telegramManagersReady()),
         installerAi: Boolean(OPENAI_API_KEY),
         catalogGitHubBackup: catalogBackupEnabled(),
         setup
@@ -239,7 +246,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Линия Роста: http://localhost:${PORT}`);
-  if (ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMINS.size || TELEGRAM_MANAGERS.length)) {
+  if (ENABLE_TELEGRAM_BOT && TELEGRAM_BOT_TOKEN && (TELEGRAM_ADMINS.size || TELEGRAM_ADMIN_USERNAMES.size || TELEGRAM_MANAGERS.length)) {
     startTelegramIntegration().catch((error) => {
       console.error("Telegram setup failed:", error.message);
     });
@@ -296,7 +303,7 @@ function telegramManagersWithPassword() {
 function setupStatus() {
   const missing = [];
   if (!TELEGRAM_BOT_TOKEN) missing.push("TELEGRAM_BOT_TOKEN");
-  if (!TELEGRAM_ADMINS.size) missing.push("TELEGRAM_ADMIN_IDS");
+  if (!TELEGRAM_ADMINS.size && !TELEGRAM_ADMIN_USERNAMES.size) missing.push("TELEGRAM_ADMIN_IDS or TELEGRAM_ADMIN_USERNAMES");
   TELEGRAM_MANAGERS.forEach((manager, index) => {
     if (!manager.password) missing.push(`TELEGRAM_MANAGER_${index + 1}_PASSWORD`);
   });
@@ -305,6 +312,7 @@ function setupStatus() {
   return {
     ready: !missing.length,
     missing,
+    adminUsernames: TELEGRAM_ADMIN_USERNAMES.size,
     managers: TELEGRAM_MANAGERS.map((manager) => ({
       id: manager.id,
       name: manager.name
@@ -1398,6 +1406,10 @@ function publicError(statusCode, publicMessage) {
   return error;
 }
 
+function normalizeTelegramUsername(value) {
+  return String(value || "").trim().replace(/^@+/, "").toLowerCase();
+}
+
 function trimText(value, max) {
   return String(value || "").trim().slice(0, max);
 }
@@ -1588,6 +1600,7 @@ async function handleTelegramUpdate(update) {
   const message = update.message;
   const chatId = String(message.chat.id);
   const fromId = String(message.from?.id || "");
+  const fromUser = message.from || {};
   const textValue = (message.text || message.caption || "").trim();
   const key = stateKey(chatId, fromId);
   const state = getBotState(key);
@@ -1605,9 +1618,9 @@ async function handleTelegramUpdate(update) {
   if (state?.flow === "edit_field") return continueEditFieldFlow(chatId, fromId, message, textValue, state);
 
   if (textValue === "/start" || textValue === "Старт") return sendStartMenu(chatId);
-  if (textValue === "/admin" || textValue === "Войти в админ-панель") return startAdminLogin(chatId, fromId);
+  if (textValue === "/admin" || textValue === "Войти в админ-панель") return startAdminLogin(chatId, fromId, fromUser);
   if (textValue === "/manager" || textValue === "Менеджера") return startManagerLogin(chatId, fromId);
-  if (textValue === "/watch" || textValue === "Наблюдать за заказами") return subscribeWatcher(chatId, fromId, message.chat);
+  if (textValue === "/watch" || textValue === "Наблюдать за заказами") return subscribeWatcher(chatId, fromId, message.chat, fromUser);
   if (textValue === "/watch_off") return unsubscribeWatcher(chatId);
 
   const managerSession = getManagerSession(fromId);
@@ -1773,8 +1786,10 @@ function isAdminSession(fromId) {
   return false;
 }
 
-function isTrustedAdmin(fromId) {
-  return Boolean(fromId && TELEGRAM_ADMINS.has(fromId));
+function isTrustedAdmin(fromId, fromUser = {}) {
+  if (fromId && TELEGRAM_ADMINS.has(fromId)) return true;
+  const username = normalizeTelegramUsername(fromUser.username);
+  return Boolean(username && TELEGRAM_ADMIN_USERNAMES.has(username));
 }
 
 function markAdminSession(fromId, chatId) {
@@ -1851,8 +1866,8 @@ async function bindManagerChat(managerId, chatId, fromId, chat = {}) {
   await writeJson(MANAGER_BINDINGS_FILE, bindings);
 }
 
-function canRegisterWatcher(fromId, chatId = "") {
-  return TELEGRAM_ADMINS.has(fromId) || TELEGRAM_OBSERVERS.has(fromId) || TELEGRAM_OBSERVERS.has(chatId) || isAdminSession(fromId);
+function canRegisterWatcher(fromId, chatId = "", fromUser = {}) {
+  return isTrustedAdmin(fromId, fromUser) || TELEGRAM_OBSERVERS.has(fromId) || TELEGRAM_OBSERVERS.has(chatId) || isAdminSession(fromId);
 }
 
 async function sendStartMenu(chatId, prefix = "Линия Роста") {
@@ -1873,14 +1888,14 @@ function startKeyboard() {
   };
 }
 
-async function startAdminLogin(chatId, fromId) {
-  if (isTrustedAdmin(fromId)) {
+async function startAdminLogin(chatId, fromId, fromUser = {}) {
+  if (isTrustedAdmin(fromId, fromUser)) {
     markAdminSession(fromId, chatId);
     return sendAdminPanel(chatId, "Вход выполнен.");
   }
 
   deleteBotState(stateKey(chatId, fromId));
-  return sendStartMenu(chatId, "Нет доступа к админ-панели. Добавьте ваш Telegram ID в TELEGRAM_ADMIN_IDS.");
+  return sendStartMenu(chatId, "Нет доступа к админ-панели. Добавьте ваш Telegram ID в TELEGRAM_ADMIN_IDS или username в TELEGRAM_ADMIN_USERNAMES.");
 }
 
 async function logoutAdmin(chatId, fromId) {
@@ -2178,8 +2193,8 @@ async function handleCallback(query) {
   const data = String(query.data || "");
   await tgApi("answerCallbackQuery", { callback_query_id: query.id }).catch(() => {});
 
-  if (data === "entry:admin") return startAdminLogin(chatId, fromId);
-  if (data === "entry:watch") return subscribeWatcher(chatId, fromId, query.message?.chat || {});
+  if (data === "entry:admin") return startAdminLogin(chatId, fromId, query.from || {});
+  if (data === "entry:watch") return subscribeWatcher(chatId, fromId, query.message?.chat || {}, query.from || {});
 
   if (data.startsWith("product:")) return handleProductCallback(chatId, fromId, data);
   if (data.startsWith("editproduct:")) return handleEditProductCallback(chatId, fromId, data);
@@ -2577,8 +2592,8 @@ function orderKeyboard(order) {
   };
 }
 
-async function subscribeWatcher(chatId, fromId, chat = {}) {
-  if (!canRegisterWatcher(fromId, chatId)) {
+async function subscribeWatcher(chatId, fromId, chat = {}, fromUser = {}) {
+  if (!canRegisterWatcher(fromId, chatId, fromUser)) {
     return sendMessage(chatId, "Наблюдение доступно только менеджерам Линии Роста. Для доступа войдите в админ-панель.");
   }
 
