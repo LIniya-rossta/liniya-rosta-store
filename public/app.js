@@ -67,22 +67,22 @@ const previewProducts = [
 
 const reviews = [
   {
-    name: "Maria Н",
+    name: "Айбек Т.",
     service: "Натяжной потолок",
     rating: 5,
-    text: "Хорошие и грамотные мастера. Переделывали натяжной потолок после других специалистов. Все исправили быстро и аккуратно."
+    text: "Отличное качество и сервис. Потолок сделали быстро и аккуратно. Результатом очень доволен!"
   },
   {
-    name: "destino_",
-    service: "SPC ламинат",
+    name: "Марина С.",
+    service: "Натяжной потолок",
     rating: 5,
-    text: "Купили SPC ламинат в Линии Роста. Прошло 9 месяцев, покрытие показало себя очень достойно."
+    text: "Спасибо за профессионализм! Всё чётко, чисто и красиво. Рекомендую «Линию Роста»."
   },
   {
-    name: "Клиент 2ГИС",
-    service: "Доставка",
+    name: "Евгений П.",
+    service: "Теневой потолок",
     rating: 5,
-    text: "Выручили вечером, быстро согласовали и предложили доставку. Привезли как надо, с накладной."
+    text: "Заказывал теневой потолок с подсветкой. Выглядит шикарно, качество на высоте!"
   }
 ];
 
@@ -95,7 +95,7 @@ const state = {
   cart: loadCart(),
   installerDrafts: loadInstallerDrafts(),
   lastOrder: loadLastOrder(),
-  theme: "dark",
+  theme: "light",
   managerOptions: [],
   managersLoading: false,
   managersLoaded: false,
@@ -139,7 +139,7 @@ function bindGlobalEvents() {
     const url = new URL(link.href);
     if (url.origin !== window.location.origin) return;
     event.preventDefault();
-    navigate(url.pathname + url.search);
+    navigate(url.pathname + url.search + url.hash);
   });
 
   window.addEventListener("popstate", renderRoute);
@@ -188,16 +188,150 @@ function renderRoute() {
   requestAnimationFrame(() => {
     observeReveal();
     updateHeader();
-    window.scrollTo(0, 0);
+    const targetId = decodeURIComponent(window.location.hash.slice(1));
+    const target = targetId ? document.getElementById(targetId) : null;
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      window.scrollTo(0, 0);
+    }
   });
 }
 
+function homeStat(icon, value, label) {
+  return `
+    <article class="home-stat">
+      <span class="home-stat-icon" aria-hidden="true">${icon}</span>
+      <div>
+        <strong>${value}</strong>
+        <span>${label}</span>
+      </div>
+    </article>
+  `;
+}
+
+function ceilingTypeCard(image, modifier, title, description) {
+  return `
+    <article class="ceiling-type-card reveal">
+      <div class="ceiling-type-image ${modifier}" style="background-image: url('${image}')" role="img" aria-label="${title}"></div>
+      <div class="ceiling-type-copy">
+        <h3>${title}</h3>
+        <p>${description}</p>
+      </div>
+    </article>
+  `;
+}
+
+function onlineCalculatorSection() {
+  return `
+    <section class="online-visualizer-section" id="calculator" aria-labelledby="calculator-title">
+      <div class="online-visualizer-inner">
+        <div class="online-visualizer-copy reveal">
+          <h2 id="calculator-title">Онлайн-расчёт<br>потолка</h2>
+          <p>Укажите размеры помещения, выберите материал и комплектацию — и получите предварительную стоимость до визита замерщика.</p>
+          <ul class="online-visualizer-benefits">
+            <li>Расчёт стоимости за несколько минут</li>
+            <li>Подбор материала и освещения</li>
+            <li>Понятная смета до начала работ</li>
+          </ul>
+          <a class="btn btn-primary online-visualizer-button" href="/installer" data-link>Рассчитать стоимость</a>
+        </div>
+
+        <div class="visualizer-device reveal" aria-label="Предпросмотр онлайн-расчёта">
+          <div class="visualizer-laptop visualizer-laptop-art">
+            <div class="visualizer-screen">
+              <div class="visualizer-browser-bar" aria-hidden="true">
+                <span></span><span></span><span></span>
+                <small>Линия Роста · онлайн-расчёт</small>
+              </div>
+              <div class="visualizer-screen-content">
+                <div class="visualizer-room" role="img" aria-label="Предпросмотр помещения с потолком">
+                  <img src="/assets/ceiling-classic.png" alt="Предварительный расчёт потолка в интерьере">
+                  <div class="visualizer-room-shade"></div>
+                  <strong class="calculator-price-badge">от 18 900 сом</strong>
+                </div>
+                <aside class="visualizer-controls calculator-controls" aria-label="Параметры расчёта">
+                  <strong>Расчёт проекта</strong>
+                  <label>Площадь <b>24 м²</b></label>
+                  <label>Материал <b>ПВХ</b></label>
+                  <label>Свет <b>По периметру</b></label>
+                  <label>Монтаж <b>Включён</b></label>
+                  <div class="calculator-total"><span>Итого</span><strong>18 900 сом</strong></div>
+                </aside>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function worksSection() {
+  const works = [
+    ["/assets/showroom-hero.png", "Гостиная с мягкой контурной подсветкой", "work-card--showroom"],
+    ["/assets/ceiling-floating.png", "Парящий потолок в современной гостиной", "work-card--floating"],
+    ["/assets/ceiling-light-lines.png", "Световые линии в жилом интерьере", "work-card--lines"],
+    ["/assets/ceiling-classic.png", "Классический потолок для просторной комнаты", "work-card--classic"]
+  ];
+
+  return `
+    <section class="works-section" id="works" aria-labelledby="works-title">
+      <div class="works-inner">
+        <div class="works-heading reveal">
+          <h2 id="works-title">Наши работы</h2>
+          <span aria-hidden="true"></span>
+        </div>
+        <div class="works-grid">
+          ${works.map(([image, title, modifier]) => `
+            <figure class="work-card ${modifier} reveal">
+              <img src="${image}" alt="${title}" loading="lazy">
+            </figure>
+          `).join("")}
+        </div>
+        <a class="btn works-button reveal" href="https://www.instagram.com/liniya_rosta.kg/" target="_blank" rel="noreferrer">Смотреть все проекты</a>
+      </div>
+    </section>
+  `;
+}
+
+function processSection() {
+  const steps = [
+    ["1", "Заявка", "Оставьте заявку на сайте или позвоните нам"],
+    ["2", "Замер", "Наш специалист приедет и сделает точные замеры"],
+    ["3", "Визуализация", "Создаём 3D-модель и согласуем все детали"],
+    ["4", "Монтаж", "Профессиональный монтаж в оговоренные сроки"]
+  ];
+
+  return `
+    <section class="process-section" id="process" aria-labelledby="process-title">
+      <div class="process-inner">
+        <div class="process-heading reveal">
+          <h2 id="process-title">Как мы работаем</h2>
+          <span aria-hidden="true"></span>
+        </div>
+        <div class="process-grid">
+          ${steps.map(([number, title, text], index) => `
+            <div class="process-step reveal">
+              <div class="process-step-number" aria-hidden="true">${number}</div>
+              <div class="process-step-copy">
+                <h3>${title}</h3>
+                <p>${text}</p>
+              </div>
+              ${index < steps.length - 1 ? '<span class="process-connector" aria-hidden="true"></span>' : ''}
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderHome() {
-  const homeProducts = getHomeProducts();
   elements.app.innerHTML = `
     <section class="hero page-section">
       <div class="hero-media">
-        <video autoplay muted loop playsinline poster="/assets/product-laminate-1.jpg">
+        <video autoplay muted loop playsinline poster="/assets/product-laminate-2.jpg">
           <source src="/assets/showroom-video.mp4" type="video/mp4">
         </video>
       </div>
@@ -205,37 +339,46 @@ function renderHome() {
       <div class="halo-lines" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
 
       <div class="hero-inner reveal">
-        <p class="overline">Бишкек · Куренкеева 49</p>
-        <h1>Интернет-магазин отделочных решений</h1>
+        <h1>Натяжные потолки под ключ в Бишкеке</h1>
         <p>
-          Потолки, световые профили, SPC ламинат и комплектующие для аккуратного ремонта.
+          Мы создаём натяжные потолки, которые подчёркивают стиль вашего пространства и служат долгие годы.
         </p>
         <div class="action-row">
-          <a class="btn btn-primary" href="${whatsAppLink("Здравствуйте! Хочу связаться с Линией Роста.")}" target="_blank" rel="noreferrer">Связаться с нами</a>
-          <a class="btn btn-primary" href="/catalog" data-link>Перейти в каталог</a>
-          <a class="btn btn-soft" href="/measure" data-link>Заказать замер от 50 м²</a>
-          <a class="btn btn-soft" href="/installer" data-link>Визуализация и просчет потолка</a>
+          <a class="btn btn-primary" href="/installer" data-link>Рассчитать стоимость</a>
+          <a class="btn btn-soft" href="/#quality" data-link>Смотреть портфолио</a>
         </div>
       </div>
 
     </section>
 
-    <section class="page-section home-catalog">
-      <div class="section-title reveal">
-        <span class="overline">Витрина</span>
-        <h2>Популярные категории</h2>
-        <p>Ламинат, профили, пленка и монтажные аксессуары.</p>
-      </div>
-      <div class="product-grid preview-grid reveal">
-        ${homeProducts.map((product) => productCard(product)).join("")}
-      </div>
-      <div class="center-row reveal">
-        <a class="btn btn-primary" href="/catalog" data-link>Открыть весь каталог</a>
+    <section class="stats-strip" id="company" aria-label="О компании">
+      <div class="stats-strip-inner">
+        ${homeStat("✧", "7+ лет", "на рынке натяжных потолков")}
+        ${homeStat("▣", "1500+", "реализованных проектов")}
+        ${homeStat("♧", "1200+", "довольных клиентов")}
+        ${homeStat("⌖", "Бишкек", "работаем во всех районах города")}
       </div>
     </section>
 
+    <section class="ceiling-types-section" id="ceiling-types" aria-labelledby="ceiling-types-title">
+      <div class="ceiling-types-heading reveal">
+        <h2 id="ceiling-types-title">Виды натяжных потолков</h2>
+        <span aria-hidden="true"></span>
+      </div>
+      <div class="ceiling-types-grid">
+        ${ceilingTypeCard("/assets/ceiling-shadow.png", "ceiling-type-image--shadow", "Теневой потолок", "Чёткие линии и эффект парения стен")}
+        ${ceilingTypeCard("/assets/ceiling-floating.png", "ceiling-type-image--floating", "Парящий потолок", "Мягкая подсветка по периметру")}
+        ${ceilingTypeCard("/assets/ceiling-light-lines.png", "ceiling-type-image--lines", "Световые линии", "Современные линии света в вашем интерьере")}
+        ${ceilingTypeCard("/assets/ceiling-classic.png", "ceiling-type-image--classic", "Классический потолок", "Идеально ровная поверхность")}
+        ${ceilingTypeCard("/assets/ceiling-spots.png", "ceiling-type-image--spots", "Софиты", "Встроенные светильники и аккуратные решения")}
+      </div>
+    </section>
+
+    ${onlineCalculatorSection()}
+    ${worksSection()}
+    ${processSection()}
     ${reviewsSection()}
-    ${measurePromo()}
+    ${consultationBanner()}
     ${contactsSection()}
   `;
   bindProductButtons();
@@ -862,23 +1005,24 @@ function emptySearch() {
 
 function reviewsSection() {
   return `
-    <section class="page-section reviews-section">
-      <div class="section-title reveal">
-        <span class="overline">Отзывы</span>
-        <h2>Что говорят клиенты</h2>
-        <p>Клиенты отмечают аккуратную работу, быстрые ответы и помощь с материалами.</p>
-      </div>
-      <div class="review-grid reveal">
-        ${reviews.map((review) => `
-          <article class="review-card">
-            <div class="stars">${"★".repeat(review.rating)}</div>
-            <p>${escapeHtml(review.text)}</p>
-            <footer>
-              <strong>${escapeHtml(review.name)}</strong>
-              <span>${escapeHtml(review.service)}</span>
-            </footer>
-          </article>
-        `).join("")}
+    <section class="trust-section" id="quality" aria-labelledby="trust-title">
+      <div class="trust-inner">
+        <div class="trust-heading reveal">
+          <h2 id="trust-title">Почему нам доверяют</h2>
+          <span aria-hidden="true"></span>
+        </div>
+        <div class="trust-grid reveal">
+          ${reviews.map((review) => `
+            <article class="trust-card review-card">
+              <div class="trust-card-top">
+                <span class="quote-mark" aria-hidden="true">“</span>
+                <strong>${escapeHtml(review.name)}</strong>
+                <div class="stars" aria-label="${review.rating} из 5">${"★".repeat(review.rating)}</div>
+              </div>
+              <p>${escapeHtml(review.text)}</p>
+            </article>
+          `).join("")}
+        </div>
       </div>
     </section>
   `;
@@ -900,9 +1044,45 @@ function measurePromo() {
   `;
 }
 
+function consultationBanner() {
+  return `
+    <section class="consultation-banner" aria-labelledby="consultation-title">
+      <div class="consultation-banner-inner">
+        <div class="consultation-banner-copy reveal">
+          <h2 id="consultation-title">Создадим потолок<br>вашей мечты</h2>
+          <p>Оставьте заявку — рассчитаем стоимость и проконсультируем бесплатно!</p>
+          <a class="btn consultation-banner-button" href="/measure" data-link>Оставить заявку</a>
+        </div>
+
+        <div class="consultation-detail reveal">
+          <span class="consultation-detail-icon" aria-hidden="true">☎</span>
+          <div>
+            <strong>+996 990 883 883</strong>
+            <small>Ежедневно с 09:00 до 19:00</small>
+          </div>
+        </div>
+        <div class="consultation-detail reveal">
+          <span class="consultation-detail-icon" aria-hidden="true">◎</span>
+          <div>
+            <strong>liniyarosta.com</strong>
+            <small>Наш официальный сайт</small>
+          </div>
+        </div>
+        <div class="consultation-detail reveal">
+          <span class="consultation-detail-icon" aria-hidden="true">⌖</span>
+          <div>
+            <strong>Бишкек, Кыргызстан</strong>
+            <small>Работаем по всем районам</small>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function contactsSection() {
   return `
-    <section class="page-section contacts-section">
+    <section class="page-section contacts-section" id="contacts">
       <div class="contacts-copy reveal">
         <span class="overline">Шоурум</span>
         <h2>Куренкеева 49, Бишкек</h2>
@@ -4231,17 +4411,18 @@ function pruneCart() {
 }
 
 function updateActiveNav(route) {
+  const currentHash = window.location.hash;
   document.querySelectorAll(".nav-links a, .bottom-nav a").forEach((link) => {
-    const path = normalizePath(new URL(link.href).pathname);
-    link.classList.toggle("is-active", path === route);
+    const url = new URL(link.href);
+    const path = normalizePath(url.pathname);
+    const matchesHash = url.hash ? url.hash === currentHash : !currentHash;
+    link.classList.toggle("is-active", path === route && matchesHash);
   });
 }
 
 function updateHeader() {
-  const top = window.scrollY || document.documentElement.scrollTop;
-  const max = document.documentElement.scrollHeight - window.innerHeight;
-  elements.header.classList.toggle("is-solid", top > 18);
-  elements.progress.style.width = `${max > 0 ? (top / max) * 100 : 0}%`;
+  elements.header.classList.remove("is-solid");
+  elements.progress.style.width = "0%";
 }
 
 function observeReveal() {
@@ -4275,7 +4456,7 @@ function normalizePath(path) {
 }
 
 function applyTheme(theme) {
-  state.theme = "dark";
+  state.theme = "light";
   document.body.dataset.theme = state.theme;
 }
 

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#07111a">
+    <title>Линия Роста - 3D motion promo</title>
+    <meta
+      name="description"
+      content="Динамичная 3D-реклама сайта Линия Роста для клиентов и монтажников."
+    >
+    <link rel="icon" href="/assets/logo.png">
+    <link rel="stylesheet" href="/promo.css?v=20260723-promo-3d-1">
+  </head>
+  <body>
+    <main class="promo" id="promoRoot">
+      <canvas class="promo-scene" id="promoScene" aria-label="3D motion реклама Линии Роста"></canvas>
+
+      <div class="promo-noise" aria-hidden="true"></div>
+      <div class="promo-progress" aria-hidden="true">
+        <span id="promoProgress"></span>
+      </div>
+
+      <header class="promo-topbar">
+        <a class="promo-brand" href="/" aria-label="На сайт Линия Роста">
+          <img src="/assets/logo.png" alt="">
+          <span>
+            <strong>Линия Роста</strong>
+            <small>3D motion reel</small>
+          </span>
+        </a>
+        <div class="promo-badge">для клиентов · для монтажников</div>
+      </header>
+
+      <section class="promo-copy" aria-live="polite">
+        <span class="promo-kicker" id="promoKicker">Запуск</span>
+        <h1 id="promoTitle">Линия Роста в движении</h1>
+        <p id="promoText">Каталог, корзина, заявки и мастерская монтажника в одном современном сайте.</p>
+        <div class="promo-subtitle" id="promoSubtitle">Нажмите “Включить голос”, чтобы запустить озвучку.</div>
+      </section>
+
+      <aside class="promo-timeline" aria-label="Сцены ролика">
+        <button type="button" data-scene="0" class="is-active">01</button>
+        <button type="button" data-scene="1">02</button>
+        <button type="button" data-scene="2">03</button>
+        <button type="button" data-scene="3">04</button>
+        <button type="button" data-scene="4">05</button>
+      </aside>
+
+      <nav class="promo-controls" aria-label="Управление роликом">
+        <button type="button" id="promoToggle">Пауза</button>
+        <button type="button" id="promoVoice">Включить голос</button>
+        <button type="button" id="promoRestart">Заново</button>
+        <a href="/installer">Мастерская</a>
+        <a href="/catalog">Каталог</a>
+      </nav>
+    </main>
+
+    <noscript>
+      <p class="promo-noscript">Включите JavaScript, чтобы посмотреть 3D motion рекламу.</p>
+    </noscript>
+
+    <script type="module" src="/promo.js?v=20260723-promo-3d-1"></script>
+  </body>
+</html>
