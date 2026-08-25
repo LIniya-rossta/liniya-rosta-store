@@ -12,9 +12,21 @@
       content="Интернет-магазин Линия Роста: натяжные потолки, SPC ламинат, комплектующие, визуализация и онлайн-просчет потолка."
     >
     <link rel="icon" href="/assets/logo.png">
-    <link rel="stylesheet" href="/styles.css?v=20260826-showroom-7">
+    <link rel="stylesheet" href="/styles.css?v=20260826-showroom-8">
   </head>
   <body data-theme="light">
+    <div class="language-gate" id="languageGate" hidden>
+      <section class="language-gate-card" role="dialog" aria-modal="true" aria-labelledby="languageGateTitle">
+        <img class="language-gate-logo" src="/assets/logo.png" alt="Линия Роста">
+        <span class="language-gate-overline">Линия Роста</span>
+        <h1 id="languageGateTitle">Добро пожаловать</h1>
+        <p>Выберите предпочитаемый язык для сайта.</p>
+        <div class="language-gate-actions">
+          <button type="button" data-language-choice="ru">Русский</button>
+          <button type="button" data-language-choice="ky">Кыргызча</button>
+        </div>
+      </section>
+    </div>
     <div class="progress-line" id="progressLine"></div>
     <div class="ambient-lines" aria-hidden="true"></div>
 
@@ -53,6 +65,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script src="/app.js?v=20260826-showroom-7" defer></script>
+    <script src="/app.js?v=20260826-showroom-8" defer></script>
   </body>
 </html>

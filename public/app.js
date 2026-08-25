@@ -119,10 +119,40 @@ const elements = {
   progress: document.getElementById("progressLine"),
   cartCount: document.getElementById("cartCount"),
   toast: document.getElementById("toast"),
-  whatsappHeader: document.getElementById("whatsappHeader")
+  whatsappHeader: document.getElementById("whatsappHeader"),
+  languageGate: document.getElementById("languageGate")
 };
 
+initLanguageGate();
 init();
+
+function initLanguageGate() {
+  const savedLanguage = localStorage.getItem("lr-language");
+  applyLanguagePreference(savedLanguage || "ru", { persist: false });
+
+  if (savedLanguage || !elements.languageGate) return;
+
+  elements.languageGate.hidden = false;
+  document.body.classList.add("language-gate-open");
+  requestAnimationFrame(() => elements.languageGate.classList.add("is-visible"));
+  elements.languageGate.querySelectorAll("[data-language-choice]").forEach((button) => {
+    button.addEventListener("click", () => {
+      applyLanguagePreference(button.dataset.languageChoice || "ru");
+      elements.languageGate.classList.remove("is-visible");
+      document.body.classList.remove("language-gate-open");
+      window.setTimeout(() => {
+        elements.languageGate.hidden = true;
+      }, 260);
+    });
+  });
+}
+
+function applyLanguagePreference(language, { persist = true } = {}) {
+  const safeLanguage = language === "ky" ? "ky" : "ru";
+  document.documentElement.lang = safeLanguage;
+  document.body.dataset.language = safeLanguage;
+  if (persist) localStorage.setItem("lr-language", safeLanguage);
+}
 
 async function init() {
   elements.whatsappHeader.href = whatsAppLink("Здравствуйте! Пишу с сайта Линия Роста.");

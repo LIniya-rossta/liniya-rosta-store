@@ -5401,6 +5401,138 @@ body[data-route="checkout"] .store-header .nav-links a.is-active {
   }
 }
 
+/* Keep the public storefront light even when the visitor's device prefers dark mode. */
+:root,
+html {
+  color-scheme: light only;
+}
+
+body,
+body[data-theme="dark"] {
+  color-scheme: light;
+}
+
+/* One-time welcome gate shown before the first storefront visit. */
+.language-gate[hidden] {
+  display: none;
+}
+
+.language-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(34, 29, 23, 0.22);
+  backdrop-filter: blur(12px) saturate(0.86);
+  opacity: 0;
+  transition: opacity 260ms ease;
+}
+
+body.language-gate-open {
+  overflow: hidden;
+}
+
+.language-gate.is-visible {
+  opacity: 1;
+}
+
+.language-gate-card {
+  width: min(100%, 430px);
+  padding: 42px 40px 38px;
+  border: 1px solid rgba(148, 120, 75, 0.22);
+  background: rgba(255, 254, 251, 0.97);
+  box-shadow: 0 28px 80px rgba(55, 43, 28, 0.22);
+  color: #4d4b46;
+  text-align: center;
+  transform: translateY(12px) scale(0.98);
+  transition: transform 300ms ease;
+}
+
+.language-gate.is-visible .language-gate-card {
+  transform: translateY(0) scale(1);
+}
+
+.language-gate-logo {
+  width: 66px;
+  height: 66px;
+  margin: 0 auto 18px;
+  object-fit: contain;
+}
+
+.language-gate-overline {
+  display: block;
+  margin-bottom: 12px;
+  color: #b79050;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.language-gate-card h1 {
+  margin: 0;
+  color: #3f3e39;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: clamp(30px, 5vw, 42px);
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  line-height: 1.05;
+}
+
+.language-gate-card p {
+  margin: 14px auto 28px;
+  color: #85817a;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.language-gate-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.language-gate-actions button {
+  min-height: 48px;
+  border: 1px solid #c7a66d;
+  border-radius: 2px;
+  background: #c7a66d;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.language-gate-actions button + button {
+  border-color: rgba(74, 73, 67, 0.24);
+  background: transparent;
+  color: #4d4b46;
+}
+
+.language-gate-actions button:hover {
+  background: #b79050;
+  border-color: #b79050;
+  transform: translateY(-1px);
+}
+
+.language-gate-actions button + button:hover {
+  background: #f1ede5;
+  border-color: rgba(74, 73, 67, 0.42);
+}
+
+@media (max-width: 480px) {
+  .language-gate {
+    padding: 16px;
+  }
+
+  .language-gate-card {
+    padding: 34px 22px 28px;
+  }
+}
+
 /* Catalog and measure pages share the showroom's quiet editorial system. */
 body[data-route="catalog"],
 body[data-route="measure"],
