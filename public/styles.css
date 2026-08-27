@@ -5401,6 +5401,54 @@ body[data-route="checkout"] .store-header .nav-links a.is-active {
   }
 }
 
+/* Showroom contact actions use the same quiet, editorial treatment as the hero. */
+.contacts-section .action-row {
+  gap: 14px;
+}
+
+.contacts-section .action-row .btn {
+  min-width: 168px;
+  min-height: 50px;
+  border-radius: 2px;
+  padding: 14px 24px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  box-shadow: none;
+}
+
+.contacts-section .action-row .btn-primary {
+  background: #0e1a27;
+  border-color: #0e1a27;
+  color: #ffffff;
+}
+
+.contacts-section .action-row .btn-primary:hover {
+  background: #1a2a3b;
+  border-color: #1a2a3b;
+  box-shadow: 0 12px 24px rgba(14, 26, 39, 0.16);
+}
+
+.contacts-section .action-row .btn-soft {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(14, 26, 39, 0.2);
+  color: #0e1a27;
+  backdrop-filter: blur(8px);
+}
+
+.contacts-section .action-row .btn-soft:hover {
+  background: #ffffff;
+  border-color: rgba(14, 26, 39, 0.42);
+  box-shadow: 0 12px 24px rgba(14, 26, 39, 0.1);
+}
+
+@media (max-width: 620px) {
+  .contacts-section .action-row .btn {
+    width: 100%;
+  }
+}
+
 /* Keep the public storefront light even when the visitor's device prefers dark mode. */
 :root,
 html {
