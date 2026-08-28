@@ -191,7 +191,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/installer-requests") {
       const payload = await readBody(req);
       const request = await createInstallerRequest(payload);
-      notifyInstallerManagers(request).catch((error) => {
+      notifyInstallerObservers(request).catch((error) => {
         console.error("Telegram installer notification failed:", error.message);
       });
       return json(res, 201, { request });
@@ -594,9 +594,6 @@ async function createInstallerRequest(payload) {
   if (!consent.personalData) {
     throw publicError(400, "Необходимо согласие на обработку данных");
   }
-  const manager = TELEGRAM_MANAGERS.find((item) => item.id === trimText(payload.managerId, 80));
-  if (!manager) throw publicError(400, "Выберите менеджера");
-
   const products = getCatalogProducts(await readJson(PRODUCTS_FILE, []));
   const activeProducts = new Map(
     products.filter((item) => item.active !== false).map((item) => [item.id, item])
@@ -638,10 +635,6 @@ async function createInstallerRequest(payload) {
   const request = {
     id: makeInstallerRequestId(requests),
     status: "new",
-    manager: {
-      id: manager.id,
-      name: manager.name
-    },
     installer,
     material: {
       productId: product.id,
@@ -2549,7 +2542,6 @@ function formatInstallerRequest(request) {
   const sections = [
     [
       `Заявка на расчет потолка: ${request.id}`,
-      `Менеджер: ${request.manager?.name || "не выбран"}`,
       `Статус: ${STATUS_LABELS[request.status] || request.status || "Новый"}`
     ],
     [
@@ -2663,14 +2655,14 @@ async function unsubscribeWatcher(chatId) {
 
 async function notifyOrderWatchers(order) {
   if (!ENABLE_TELEGRAM_BOT || !TELEGRAM_BOT_TOKEN) return;
-  const chatIds = await getNotificationChatIds();
+  const chatIds = await getObserverChatIds();
   const message = `Новый заказ с сайта\n${MESSAGE_SEPARATOR}\n${formatOrder(order)}`;
   for (const chatId of chatIds) {
     await sendMessage(chatId, message);
   }
 }
 
-async function getNotificationChatIds() {
+async function getObserverChatIds() {
   const watchers = await readJson(WATCHERS_FILE, []);
   const managerChatIds = new Set(
     (await readJson(MANAGER_BINDINGS_FILE, []))
@@ -2685,11 +2677,11 @@ async function getNotificationChatIds() {
   return [...chatIds];
 }
 
-async function notifyInstallerManagers(request) {
+async function notifyInstallerObservers(request) {
   if (!ENABLE_TELEGRAM_BOT || !TELEGRAM_BOT_TOKEN) return;
-  const chatIds = await getManagerChatIds(request.manager?.id);
+  const chatIds = await getObserverChatIds();
   if (!chatIds.length) {
-    console.warn(`Installer request ${request.id} was not sent: manager ${request.manager?.id || "unknown"} has no Telegram binding`);
+    console.warn(`Installer request ${request.id} was not sent: no Telegram observers configured`);
     return;
   }
 

@@ -3,12 +3,6 @@ const money = new Intl.NumberFormat("ru-RU");
 const KYRGYZ_TIME_ZONE = "Asia/Bishkek";
 const LEGAL_VERSION = "2026-08-22";
 const LEGAL_UPDATED_LABEL = "22 августа 2026";
-const defaultManagers = [
-  { id: "manager-1", name: "Катерина" },
-  { id: "manager-2", name: "Тая" },
-  { id: "manager-3", name: "Диана" },
-  { id: "manager-4", name: "Татьяна" }
-];
 const SKETCH_WIDTH = 640;
 const SKETCH_HEIGHT = 1040;
 const SKETCH_CENTER_X = SKETCH_WIDTH / 2;
@@ -96,9 +90,6 @@ const state = {
   installerDrafts: loadInstallerDrafts(),
   lastOrder: loadLastOrder(),
   theme: "light",
-  managerOptions: [],
-  managersLoading: false,
-  managersLoaded: false,
   installerSketches: [initialInstallerSketch],
   activeInstallerSketchIndex: 0,
   installerSketch: initialInstallerSketch,
@@ -233,7 +224,7 @@ const interfaceTranslations = new Map([
   ["Проверьте товары и сохраненные расчеты потолка, затем продолжайте оформление.", "Товарларды жана сакталган шып эсептерин текшерип, андан соң тариздөөнү улантыңыз."],
   ["Оформление", "Тариздөө"],
   ["Данные заказа", "Заказдын маалыматтары"],
-  ["Контакты, адрес и способ получения перед отправкой менеджеру.", "Менеджерге жөнөтүүдөн мурун байланыш маалыматын, даректи жана алуу ыкмасын көрсөтүңүз."],
+  ["Контакты, адрес и способ получения для оформления заявки.", "Өтүнмөнү тариздөө үчүн байланыш маалыматын, даректи жана алуу ыкмасын көрсөтүңүз."],
   ["Назад в корзину", "Себетке кайтуу"],
   ["Имя", "Аты"],
   ["Ваше имя", "Атыңыз"],
@@ -315,7 +306,7 @@ const interfaceTranslations = new Map([
   ["Благодарим", "Рахмат"],
   ["Заявка принята", "Өтүнмө кабыл алынды"],
   ["Заявка отправлена.", "Өтүнмө жөнөтүлдү."],
-  ["Менеджер свяжется с вами для подтверждения.", "Менеджер ырастоо үчүн сиз менен байланышат."],
+  ["Мы свяжемся с вами для подтверждения.", "Ырастоо үчүн сиз менен байланышабыз."],
   ["Вернуться в каталог", "Каталогго кайтуу"],
   ["На главную", "Башкы бетке"],
   ["Добавить товар из каталога", "Каталогдон товар кошуу"],
@@ -371,7 +362,7 @@ const interfaceTranslations = new Map([
   ["Онлайн-заявка доступна от 50 м².", "Онлайн өтүнмө 50 м²ден баштап жеткиликтүү."],
   ["Выберите дату и время готовности.", "Даяр боло турган күн менен убакытты тандаңыз."],
   ["Выберите материал.", "Материалды тандаңыз."],
-  ["Отправляем заявку менеджеру...", "Өтүнмө менеджерге жөнөтүлүүдө..."],
+  ["Отправляем заявку на расчет...", "Эсептөө өтүнмөсү жөнөтүлүүдө..."],
   ["Отправляем заказ...", "Заказ жөнөтүлүүдө..."],
   ["Товар не найден.", "Товар табылган жок."],
   ["Для этого чертежа уже достаточно точек.", "Бул чийме үчүн чекиттер жетиштүү."],
@@ -383,7 +374,7 @@ const interfaceTranslations = new Map([
   ["Юридические документы", "Юридикалык документтер"],
   ["Как Линия Роста собирает, использует и защищает данные клиентов при заказах, замерах и заявках на просчет потолка.", "Линия Роста заказдарда, өлчөөлөрдө жана шыпты эсептөө өтүнмөлөрүндө кардарлардын маалыматтарын кантип чогултарын, колдонорун жана коргоорун түшүндүрөт."],
   ["Правила использования каталога, корзины, онлайн-замера и визуализации потолка на сайте Линия Роста.", "Линия Роста сайтындагы каталогду, себетти, онлайн өлчөөнү жана шыпты визуалдаштырууну колдонуу эрежелери."],
-  ["Документ описывает согласие клиента на использование данных для заказа, замера, визуализации и связи с менеджером.", "Бул документ кардардын маалыматтарын заказ, өлчөө, визуалдаштыруу жана менеджер менен байланыш үчүн колдонууга берген макулдугун түшүндүрөт."],
+  ["Документ описывает согласие клиента на использование данных для заказа, замера, визуализации и связи с компанией.", "Бул документ кардардын маалыматтарын заказ, өлчөө, визуалдаштыруу жана компания менен байланыш үчүн колдонууга берген макулдугун түшүндүрөт."],
   ["Кто обрабатывает данные", "Маалыматтарды ким иштетет"],
   ["Какие данные мы получаем", "Кандай маалыматтарды алабыз"],
   ["Зачем нужны данные", "Маалыматтар эмне үчүн керек"],
@@ -406,10 +397,10 @@ const interfaceTranslations = new Map([
   ["Имя, телефон, адрес доставки или адрес объекта, комментарии к заказу, выбранные товары, количество, дату и время готовности.", "Аты-жөнү, телефон, жеткирүү же объекттин дареги, заказ боюнча комментарийлер, тандалган товарлар, саны, даяр болуу күнү жана убактысы."],
   ["Для страницы визуализации и просчета потолка: контур чертежа, размеры сторон, площадь, периметр, выбранный материал, дополнительные товары, фото или файл чертежа, если вы его загрузили.", "Шыпты визуалдаштыруу жана эсептөө барагы үчүн: чийменин контуру, тараптардын өлчөмдөрү, аянты, периметри, тандалган материал, кошумча товарлар жана жүктөлгөн болсо чийменин сүрөтү же файлы."],
   ["Технические данные сайта: адрес страницы, время отправки заявки, базовые данные браузера, необходимые для работы сервиса и защиты от ошибок.", "Сайттын техникалык маалыматтары: барактын дареги, өтүнмө жөнөтүлгөн убакыт жана кызматтын иштеши менен каталардан коргонуу үчүн керектүү браузердин негизги маалыматтары."],
-  ["Чтобы принять заказ, связаться с клиентом, уточнить наличие и цену, оформить доставку или самовывоз, передать заявку выбранному менеджеру и подготовить расчет.", "Заказды кабыл алуу, кардар менен байланышуу, бар-жогун жана баасын тактоо, жеткирүү же өзү алып кетүүнү уюштуруу, өтүнмөнү тандалган менеджерге берүү жана эсеп даярдоо үчүн."],
+  ["Чтобы принять заказ, связаться с клиентом, уточнить наличие и цену, оформить доставку или самовывоз, передать заявку уполномоченному сотруднику и подготовить расчет.", "Заказды кабыл алуу, кардар менен байланышуу, бар-жогун жана баасын тактоо, жеткирүү же өзү алып кетүүнү уюштуруу, өтүнмөнү ыйгарым укуктуу кызматкерге берүү жана эсеп даярдоо үчүн."],
   ["Чтобы сохранить черновик расчета в корзине на устройстве клиента, если клиент сам нажал сохранение.", "Кардар сактоо баскычын өзү басса, эсептин караламасын анын түзмөгүндөгү себетке сактоо үчүн."],
   ["Чтобы улучшать работу каталога, корзины, визуализации потолка и Telegram-уведомлений.", "Каталогдун, себеттин, шыпты визуалдаштыруунун жана Telegram билдирүүлөрүнүн ишин жакшыртуу үчүн."],
-  ["Данные заявок могут передаваться администраторам и менеджерам Линии Роста через Telegram-бота, а также использоваться при общении с клиентом через WhatsApp, если клиент сам выбрал этот канал.", "Өтүнмөлөрдүн маалыматтары Telegram-бот аркылуу Линия Ростанын администраторлоруна жана менеджерлерине берилиши мүмкүн. Кардар бул каналды өзү тандаса, WhatsApp аркылуу байланышта да колдонулат."],
+  ["Данные заявок могут передаваться администраторам и уполномоченным сотрудникам Линии Роста через Telegram-бота, а также использоваться при общении с клиентом через WhatsApp, если клиент сам выбрал этот канал.", "Өтүнмөлөрдүн маалыматтары Telegram-бот аркылуу Линия Ростанын администраторлоруна жана ыйгарым укуктуу кызматкерлерине берилиши мүмкүн. Кардар бул каналды өзү тандаса, WhatsApp аркылуу байланышта да колдонулат."],
   ["Сайт размещается на облачной инфраструктуре. Данные могут технически храниться и обрабатываться сервисами хостинга, которые нужны для работы сайта.", "Сайт булут инфраструктурасында жайгашат. Маалыматтар сайтты иштетүүгө керектүү хостинг кызматтарында техникалык жактан сакталып жана иштетилиши мүмкүн."],
   ["Если клиент использует распознавание фото чертежа, изображение может быть отправлено в AI-сервис для построения предварительного контура. Не загружайте документы, не относящиеся к расчету.", "Кардар чийменин сүрөтүн таануу функциясын колдонсо, алдын ала контур түзүү үчүн сүрөт AI-кызматына жөнөтүлүшү мүмкүн. Эсепке тиешеси жок документтерди жүктөбөңүз."],
   ["Данные хранятся столько, сколько нужно для обработки заявки, учета заказов, поддержки клиента и защиты интересов сторон.", "Маалыматтар өтүнмөнү иштетүүгө, заказдарды эсепке алууга, кардарга колдоо көрсөтүүгө жана тараптардын кызыкчылыктарын коргоого керектүү убакытка чейин сакталат."],
@@ -432,10 +423,10 @@ const interfaceTranslations = new Map([
   ["Сайт может временно быть недоступен из-за обновлений, технических работ или работы внешних сервисов.", "Сайт жаңыртуулардан, техникалык иштерден же тышкы кызматтардын иштөөсүнөн улам убактылуу жеткиликсиз болушу мүмкүн."],
   ["Если клиент не согласен с документами, он не должен отправлять формы на сайте.", "Кардар документтерге макул болбосо, сайттагы формаларды жөнөтпөшү керек."],
   ["Клиент добровольно предоставляет данные через формы сайта и подтверждает, что данные точные и актуальные.", "Кардар сайттагы формалар аркылуу маалыматтарды өз каалоосу менен берип, алардын так жана актуалдуу экенин ырастайт."],
-  ["Клиент разрешает Линии Роста собирать, записывать, хранить, уточнять, использовать, передавать менеджерам, обезличивать и удалять данные в целях обработки заявки.", "Кардар Линия Роста компаниясына өтүнмөнү иштетүү үчүн маалыматтарды чогултууга, жазууга, сактоого, тактоого, колдонууга, менеджерлерге берүүгө, жашыруундаштырууга жана өчүрүүгө уруксат берет."],
+  ["Клиент разрешает Линии Роста собирать, записывать, хранить, уточнять, использовать, передавать уполномоченным сотрудникам, обезличивать и удалять данные в целях обработки заявки.", "Кардар Линия Роста компаниясына өтүнмөнү иштетүү үчүн маалыматтарды чогултууга, жазууга, сактоого, тактоого, колдонууга, ыйгарым укуктуу кызматкерлерге берүүгө, жашыруундаштырууга жана өчүрүүгө уруксат берет."],
   ["Имя, телефон, адрес, комментарий, выбранные товары, количество, дата и время готовности, способ получения.", "Аты-жөнү, телефон, дарек, комментарий, тандалган товарлар, саны, даяр болуу күнү жана убактысы, алуу ыкмасы."],
-  ["Для визуализации потолка: чертеж, размеры, площадь, периметр, фото чертежа, выбранное полотно, дополнительные товары и выбранный менеджер.", "Шыпты визуалдаштыруу үчүн: чийме, өлчөмдөр, аянт, периметр, чийменин сүрөтү, тандалган полотно, кошумча товарлар жана тандалган менеджер."],
-  ["Администраторам и менеджерам Линии Роста, которые обрабатывают заказы и заявки.", "Заказдарды жана өтүнмөлөрдү иштеткен Линия Роста администраторлоруна жана менеджерлерине."],
+  ["Для визуализации потолка: чертеж, размеры, площадь, периметр, фото чертежа, выбранное полотно и дополнительные товары.", "Шыпты визуалдаштыруу үчүн: чийме, өлчөмдөр, аянт, периметр, чийменин сүрөтү, тандалган полотно жана кошумча товарлар."],
+  ["Администраторам и уполномоченным сотрудникам Линии Роста, которые обрабатывают заказы и заявки.", "Заказдарды жана өтүнмөлөрдү иштеткен Линия Роста администраторлоруна жана ыйгарым укуктуу кызматкерлерине."],
   ["Техническим сервисам, без которых сайт и уведомления не работают: хостинг, Telegram-бот, WhatsApp-связь, AI-распознавание фото при использовании этой функции.", "Сайт жана билдирүүлөр иштеши үчүн керектүү техникалык кызматтарга: хостингге, Telegram-ботко, WhatsApp байланышына жана бул функция колдонулганда AI сүрөт таануусуна."],
   ["Данные не продаются третьим лицам и не используются для чужой рекламы.", "Маалыматтар үчүнчү жактарга сатылбайт жана башка бирөөнүн жарнамасы үчүн колдонулбайт."],
   ["Согласие действует с момента отправки формы и до достижения целей обработки либо до отзыва согласия клиентом.", "Макулдук форма жөнөтүлгөн учурдан тартып иштетүү максаттары аткарылганга же кардар макулдугун кайтарып алганга чейин күчүндө болот."],
@@ -451,7 +442,7 @@ const interfaceTranslations = new Map([
   ["согласие на обработку данных", "маалыматтарды иштетүүгө макулдукту"],
   ["Используя сайт и отправляя формы, клиент принимает ", "Сайтты колдонуп, формаларды жөнөтүү менен кардар төмөнкүлөрдү кабыл алат: "],
   [" и ", " жана "],
-  [". Менеджер свяжется с вами для подтверждения.", ". Менеджер ырастоо үчүн сиз менен байланышат."],
+  [". Мы свяжемся с вами для подтверждения.", ". Ырастоо үчүн сиз менен байланышабыз."],
   ["Введите точные размеры сторон: ", "Тараптардын так өлчөмдөрүн киргизиңиз: "],
   ["Добавлено в корзину: ", "Себетке кошулду: "],
   [" добавлено.", " кошулду."],
@@ -917,7 +908,7 @@ function renderCheckout() {
         <div>
           <span class="overline">Оформление</span>
           <h1>Данные заказа</h1>
-          <p>Контакты, адрес и способ получения перед отправкой менеджеру.</p>
+          <p>Контакты, адрес и способ получения для оформления заявки.</p>
         </div>
         <a class="btn btn-soft" href="/cart" data-link>Назад в корзину</a>
       </div>
@@ -1076,12 +1067,6 @@ function renderInstaller() {
           <label><span>Телефон</span><input name="phone" required autocomplete="tel" inputmode="tel" value="${escapeHtml(draftForm.phone || "+996 ")}" placeholder="+996 ..." data-phone-autocode="+996 "></label>
           <label class="full"><span>Адрес объекта</span><input name="objectAddress" required autocomplete="street-address" placeholder="Район, улица, дом" value="${escapeHtml(draftForm.objectAddress || "")}"></label>
           ${materialPickerTemplate(materials, draftForm.materialId)}
-          <label>
-            <span>Менеджер</span>
-            <select name="managerId" required>
-              ${managerOptionsTemplate(draftForm.managerId)}
-            </select>
-          </label>
           <label><span>Площадь, м²</span><input name="area" type="number" min="0" step="0.1" inputmode="decimal" value="${escapeHtml(inputQtyValue(calculatedStats.area))}" data-installer-area readonly></label>
           <label><span>Периметр, м</span><input name="perimeter" type="number" min="0" step="0.1" inputmode="decimal" value="${escapeHtml(inputQtyValue(calculatedStats.perimeter))}" data-installer-perimeter readonly></label>
           ${installerExtrasTemplate()}
@@ -1127,17 +1112,6 @@ function renderInstaller() {
     </section>
   `;
 
-  if (!state.managersLoaded && !state.managersLoading) loadManagers().then(() => {
-    if (normalizePath(window.location.pathname) !== "/installer") return;
-    const select = document.querySelector('#installerForm select[name="managerId"]');
-    if (!select) return;
-    const selectedManagerId = select.value;
-    select.innerHTML = managerOptionsTemplate(selectedManagerId);
-    if (selectedManagerId && [...select.options].some((option) => option.value === selectedManagerId)) {
-      select.value = selectedManagerId;
-    }
-    applyLanguageToPage();
-  });
   bindPhoneInputs();
   bindReadyControls("installerForm");
   bindInstallerFulfillmentControls();
@@ -1164,7 +1138,7 @@ function renderSuccess() {
         </div>
         <span class="overline">Благодарим</span>
         <h1>Заявка принята</h1>
-        <p>${visibleOrderId ? `Номер заказа: ${escapeHtml(visibleOrderId)}.` : "Заявка отправлена."} Менеджер свяжется с вами для подтверждения.</p>
+        <p>${visibleOrderId ? `Номер заказа: ${escapeHtml(visibleOrderId)}.` : "Заявка отправлена."} Мы свяжемся с вами для подтверждения.</p>
         <div class="action-row center-actions">
           <a class="btn btn-primary" href="/catalog" data-link>Вернуться в каталог</a>
           <a class="btn btn-soft" href="/" data-link>На главную</a>
@@ -1195,12 +1169,12 @@ function renderPrivacyPolicy() {
           "Технические данные сайта: адрес страницы, время отправки заявки, базовые данные браузера, необходимые для работы сервиса и защиты от ошибок."
         ])}
         ${legalSection("3. Зачем нужны данные", [
-          "Чтобы принять заказ, связаться с клиентом, уточнить наличие и цену, оформить доставку или самовывоз, передать заявку выбранному менеджеру и подготовить расчет.",
+          "Чтобы принять заказ, связаться с клиентом, уточнить наличие и цену, оформить доставку или самовывоз, передать заявку уполномоченному сотруднику и подготовить расчет.",
           "Чтобы сохранить черновик расчета в корзине на устройстве клиента, если клиент сам нажал сохранение.",
           "Чтобы улучшать работу каталога, корзины, визуализации потолка и Telegram-уведомлений."
         ])}
         ${legalSection("4. Передача данных", [
-          "Данные заявок могут передаваться администраторам и менеджерам Линии Роста через Telegram-бота, а также использоваться при общении с клиентом через WhatsApp, если клиент сам выбрал этот канал.",
+          "Данные заявок могут передаваться администраторам и уполномоченным сотрудникам Линии Роста через Telegram-бота, а также использоваться при общении с клиентом через WhatsApp, если клиент сам выбрал этот канал.",
           "Сайт размещается на облачной инфраструктуре. Данные могут технически храниться и обрабатываться сервисами хостинга, которые нужны для работы сайта.",
           "Если клиент использует распознавание фото чертежа, изображение может быть отправлено в AI-сервис для построения предварительного контура. Не загружайте документы, не относящиеся к расчету."
         ])}
@@ -1267,21 +1241,21 @@ function renderDataConsent() {
       <div class="legal-hero reveal">
         <span class="overline">Документы</span>
         <h1>Согласие на обработку и передачу данных</h1>
-        <p>Документ описывает согласие клиента на использование данных для заказа, замера, визуализации и связи с менеджером.</p>
+        <p>Документ описывает согласие клиента на использование данных для заказа, замера, визуализации и связи с компанией.</p>
         <span class="legal-version">Редакция: ${LEGAL_UPDATED_LABEL}</span>
       </div>
 
       <div class="legal-card reveal">
         ${legalSection("1. Что подтверждает клиент", [
           "Клиент добровольно предоставляет данные через формы сайта и подтверждает, что данные точные и актуальные.",
-          "Клиент разрешает Линии Роста собирать, записывать, хранить, уточнять, использовать, передавать менеджерам, обезличивать и удалять данные в целях обработки заявки."
+          "Клиент разрешает Линии Роста собирать, записывать, хранить, уточнять, использовать, передавать уполномоченным сотрудникам, обезличивать и удалять данные в целях обработки заявки."
         ])}
         ${legalSection("2. Какие данные входят в согласие", [
           "Имя, телефон, адрес, комментарий, выбранные товары, количество, дата и время готовности, способ получения.",
-          "Для визуализации потолка: чертеж, размеры, площадь, периметр, фото чертежа, выбранное полотно, дополнительные товары и выбранный менеджер."
+          "Для визуализации потолка: чертеж, размеры, площадь, периметр, фото чертежа, выбранное полотно и дополнительные товары."
         ])}
         ${legalSection("3. Кому могут передаваться данные", [
-          "Администраторам и менеджерам Линии Роста, которые обрабатывают заказы и заявки.",
+          "Администраторам и уполномоченным сотрудникам Линии Роста, которые обрабатывают заказы и заявки.",
           "Техническим сервисам, без которых сайт и уведомления не работают: хостинг, Telegram-бот, WhatsApp-связь, AI-распознавание фото при использовании этой функции.",
           "Данные не продаются третьим лицам и не используются для чужой рекламы."
         ])}
@@ -1384,7 +1358,6 @@ function cartLayout(lines, installerDrafts = getInstallerDrafts()) {
 
 function installerDraftCartItem(draft) {
   const material = findProduct(draft.form?.materialId);
-  const managerName = managerDisplayName(draft.form?.managerId);
   const stats = draft.stats || {};
   const sketchesCount = Array.isArray(draft.sketches) && draft.sketches.length ? draft.sketches.length : 1;
   return `
@@ -1399,7 +1372,6 @@ function installerDraftCartItem(draft) {
         <div class="installer-draft-meta">
           <span>${formatQty(stats.area || 0)} м²</span>
           <span>${formatQty(stats.perimeter || 0)} м</span>
-          <span>${escapeHtml(managerName)}</span>
         </div>
       </div>
       <div class="installer-draft-actions">
@@ -1819,33 +1791,6 @@ function materialMeta(product) {
     product.stock || "",
     product.unit ? `ед.: ${product.unit}` : ""
   ].filter(Boolean).join(" · ");
-}
-
-function managerOptionsTemplate(selectedManagerId = "") {
-  const managers = state.managerOptions.length ? state.managerOptions : defaultManagers;
-  if (managers.length) {
-    return managers
-      .map((manager) => `<option value="${escapeHtml(manager.id)}" ${manager.id === selectedManagerId ? "selected" : ""}>${escapeHtml(manager.name)}</option>`)
-      .join("");
-  }
-  if (state.managersLoaded) return `<option value="">Менеджеры не настроены</option>`;
-  return `<option value="">Менеджеры загружаются</option>`;
-}
-
-async function loadManagers() {
-  state.managersLoading = true;
-  try {
-    const response = await fetch("/api/managers/public");
-    const data = await response.json();
-    const managers = Array.isArray(data.managers) ? data.managers : [];
-    state.managerOptions = managers.length ? managers : defaultManagers;
-  } catch {
-    state.managerOptions = defaultManagers;
-    toast("Менеджеры временно не загрузились.");
-  } finally {
-    state.managersLoading = false;
-    state.managersLoaded = true;
-  }
 }
 
 function createDefaultSketch() {
@@ -2529,7 +2474,6 @@ function collectInstallerFormValues(form) {
     phone: String(data.get("phone") || "").trim(),
     objectAddress: String(data.get("objectAddress") || "").trim(),
     materialId: String(data.get("materialId") || "").trim(),
-    managerId: String(data.get("managerId") || "").trim(),
     method,
     deliveryAddress: method === "delivery" ? String(data.get("deliveryAddress") || "").trim() : "",
     readyDate: String(data.get("readyDate") || ready.date),
@@ -2617,11 +2561,6 @@ function discardActiveInstallerDraft() {
 
 function createInstallerDraftId() {
   return `installer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function managerDisplayName(managerId) {
-  const managers = [...state.managerOptions, ...defaultManagers];
-  return managers.find((manager) => manager.id === managerId)?.name || "Менеджер не выбран";
 }
 
 function installerSketchTabsTemplate() {
@@ -3395,6 +3334,7 @@ function bindSketchDimensionInputs(options = {}) {
     const draftKey = draftKeyForInput(input, type);
     if (!draftKey) return;
     state.installerDimensionDrafts[draftKey] = input.value;
+    input.dataset.liveObservedValue = input.value;
   };
 
   const commitDimensionInput = (input, type, mode = "final") => {
@@ -3426,7 +3366,7 @@ function bindSketchDimensionInputs(options = {}) {
       delete store[key];
       if (type === "dimension") syncRectangleDimensionPair(key, 0);
     }
-    applySketchDimensionsToGeometry();
+    applySketchDimensionsToGeometry(type === "dimension" ? key : "");
     if (mode === "live") {
       rerenderSketchPreview();
       syncDimensionControlValues(input);
@@ -3687,7 +3627,6 @@ async function submitInstallerRequest(event) {
       name: form.get("name"),
       phone: form.get("phone")
     },
-    managerId: form.get("managerId"),
     materialId,
     object: {
       address: form.get("objectAddress"),
@@ -3709,7 +3648,7 @@ async function submitInstallerRequest(event) {
     consent: legalConsentPayload("installer")
   };
 
-  setNote(note, "Отправляем заявку менеджеру...", false);
+  setNote(note, "Отправляем заявку на расчет...", false);
   try {
     const response = await fetch("/api/installer-requests", {
       method: "POST",
@@ -4214,14 +4153,14 @@ function nearestSketchEdge(point) {
     .sort((a, b) => a.distance - b.distance)[0];
 }
 
-function repairSketchLayout() {
+function repairSketchLayout(changedKey = "") {
   cleanSketchAfterPointChange();
   const count = state.installerSketch.points.length;
   if (state.installerSketch.shapeType === "lshape") {
     return repairLShapeLayout();
   }
   if (state.installerSketch.shapeType === "rectangle" || count === 4) {
-    return repairRectangleLayout();
+    return repairRectangleLayout(changedKey);
   }
   state.installerSketch.points = fitSketchPoints(orderPointsAroundCentroid(state.installerSketch.points));
   relabelSketchPoints(state.installerSketch.points);
@@ -4229,10 +4168,10 @@ function repairSketchLayout() {
   normalizeSketchDimensionState();
 }
 
-function repairRectangleLayout() {
+function repairRectangleLayout(changedKey = "") {
   const oldDimensions = { ...(state.installerSketch.dimensions || {}) };
   const edgeValues = sketchEdges(state.installerSketch.points).map((edge) => oldDimensions[edge.key] || edge.estimated || 0);
-  const activeKey = state.installerSketch.activeEdgeKey;
+  const activeKey = changedKey || state.installerSketch.activeEdgeKey;
   const dimensionValue = (key) => Number(oldDimensions[key] || 0);
   const widthMeters = ["A-B", "C-D"].includes(activeKey) && dimensionValue(activeKey)
     ? dimensionValue(activeKey)
@@ -4359,10 +4298,10 @@ function useStructuredLayoutForDimensions() {
     || state.installerSketch.shapeType === "lshape";
 }
 
-function applySketchDimensionsToGeometry() {
+function applySketchDimensionsToGeometry(changedKey = "") {
   normalizeSketchDimensionState();
   if (useStructuredLayoutForDimensions()) {
-    repairSketchLayout();
+    repairSketchLayout(changedKey);
     return;
   }
   const points = state.installerSketch.points.map((point) => ({ ...point }));
